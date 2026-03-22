@@ -91,6 +91,11 @@ function cleanText(text) {
   return text.replace(/<cite[^>]*>/g, "").replace(/<\/cite>/g, "").replace(/\[\d+\]/g, "").trim();
 }
 
+function isValidUrl(url) {
+  if (!url) return false;
+  try { new URL(url); return url.startsWith("http"); } catch { return false; }
+}
+
 function parseJSON(raw, bracket = "[") {
   if (!raw) return null;
   const cleaned = raw.replace(/```json|```/g, "").replace(/<cite[^>]*>/g, "").replace(/<\/cite>/g, "").trim();
@@ -136,6 +141,7 @@ function SkeletonCard({ dark, height = 180 }) {
   );
 }
 
+// ─── NEWS CARD — no urgency badge, clean signal, working full story ────────────
 function NewsCard({ item, idx, dark }) {
   const t = useTheme(dark);
   const cat = t.cats[item.category] || t.cats.tools;
@@ -155,40 +161,58 @@ function NewsCard({ item, idx, dark }) {
     setExpanded(true);
     setLoadingArticle(true);
     try {
-      const raw = await apiCall("expand", `Write a 400 word analysis of: "${cleanText(item.title)}". Cover what happened, why it matters, background context, and what to watch next. Flowing paragraphs only.`);
-      setFullArticle(cleanText(raw));
-    } catch (_) { setFullArticle("Unable to load full article."); }
+      // Plain text request — no JSON format
+      const raw = await apiCall("expand",
+        `Write a 350 word analysis of this AI news story: "${cleanText(item.title)}". Cover: what happened, why it matters, background context, and what to watch next. Write in flowing paragraphs. Do not use bullet points. Do not return JSON.`
+      );
+      // Clean any accidental JSON that slips through
+      const text = cleanText(raw);
+      const looksLikeJSON = text.trim().startsWith("[") || text.trim().startsWith("{");
+      setFullArticle(looksLikeJSON ? "Full analysis unavailable — please try again." : text);
+    } catch (_) {
+      setFullArticle("Unable to load full article.");
+    }
     setLoadingArticle(false);
   };
 
   return (
     <div style={{ background: t.surface, border: `1px solid ${expanded ? cat.border : t.border}`, borderLeft: `3px solid ${cat.border}`, borderRadius: 3, padding: "16px 18px", opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.05}s`, display: "flex", flexDirection: "column", transition: "border-color 0.2s" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
+
+      {/* Category badge only — no urgency indicator */}
+      <div style={{ marginBottom: 10 }}>
         <Badge label={item.category} cat={cat} />
-        <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>
-          {item.urgency === "high" ? "🔴" : item.urgency === "medium" ? "🟡" : "⚪"} {item.urgency?.toUpperCase()}
-        </span>
       </div>
-      <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, lineHeight: 1.5, marginBottom: 8, fontFamily: "Georgia, serif" }}>{cleanText(item.title)}</h3>
-      <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.7, marginBottom: 10, flex: 1 }}>{cleanText(item.summary)}</p>
+
+      {/* Title */}
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, lineHeight: 1.5, marginBottom: 8, fontFamily: "Georgia, serif" }}>
+        {cleanText(item.title)}
+      </h3>
+
+      {/* Summary */}
+      <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.7, marginBottom: 12, flex: 1 }}>
+        {cleanText(item.summary)}
+      </p>
+
+      {/* Full article expansion */}
       {expanded && (
         <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 14, marginBottom: 14 }}>
           {loadingArticle ? (
-            <div style={{ fontFamily: "monospace", fontSize: 11, color: t.accent, animation: "pulse 1s infinite" }}>● GENERATING FULL ANALYSIS...</div>
+            <div style={{ fontFamily: "monospace", fontSize: 11, color: t.accent, animation: "pulse 1s infinite" }}>● GENERATING ANALYSIS...</div>
           ) : (
             <div style={{ fontSize: 13, color: t.textMid, lineHeight: 1.8 }}>{fullArticle}</div>
           )}
         </div>
       )}
-      {item.signal && (
-        <div style={{ fontFamily: "monospace", fontSize: 10, color: cat.text, background: cat.bg, border: `1px solid ${cat.border}`, borderRadius: 2, padding: "4px 8px", marginBottom: 10 }}>
-          ► {cleanText(item.signal)}
-        </div>
-      )}
+
+      {/* Footer */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>{item.source}</span>
-          {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: cat.text, textDecoration: "none", padding: "2px 6px", border: `1px solid ${cat.border}`, borderRadius: 2 }}>SOURCE ↗</a>}
+          {isValidUrl(item.url) && (
+            <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: cat.text, textDecoration: "none", padding: "2px 6px", border: `1px solid ${cat.border}`, borderRadius: 2 }}>
+              SOURCE ↗
+            </a>
+          )}
         </div>
         <div style={{ display: "flex", gap: 5 }}>
           <button onClick={loadFullArticle} style={{ fontFamily: "monospace", fontSize: 9, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: expanded ? cat.bg : "transparent", border: `1px solid ${expanded ? cat.border : t.borderMid}`, color: expanded ? cat.text : t.textMuted }}>
@@ -199,7 +223,9 @@ function NewsCard({ item, idx, dark }) {
               {v==="up"?"👍":"👎"}
             </button>
           ))}
-          <button onClick={share} style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: "transparent", border: `1px solid ${t.borderMid}`, color: copied?"#22c55e":t.textMuted }}>{copied?"✓":"SHARE"}</button>
+          <button onClick={share} style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: "transparent", border: `1px solid ${t.borderMid}`, color: copied?"#22c55e":t.textMuted }}>
+            {copied?"✓":"SHARE"}
+          </button>
         </div>
       </div>
     </div>
@@ -209,33 +235,29 @@ function NewsCard({ item, idx, dark }) {
 // ─── VIDEO CARD ───────────────────────────────────────────────────────────────
 function VideoCard({ item, idx, dark }) {
   const t = useTheme(dark);
-  const ytUrl = item.videoId ? `https://www.youtube.com/watch?v=${item.videoId}` : item.url;
+  const ytUrl = item.videoId ? `https://www.youtube.com/watch?v=${item.videoId}` : (isValidUrl(item.url) ? item.url : null);
   const thumbUrl = item.videoId ? `https://img.youtube.com/vi/${item.videoId}/mqdefault.jpg` : null;
 
   return (
     <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.06}s`, overflow: "hidden" }}>
       {thumbUrl && (
         <div style={{ position: "relative", paddingTop: "56.25%", background: "#000", overflow: "hidden" }}>
-          <img src={thumbUrl} alt={item.title} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+          <img src={thumbUrl} alt={item.title} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" }} onError={e => e.target.style.display="none"} />
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={{ width: 48, height: 48, background: "rgba(255,0,0,0.9)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
-              <span style={{ color: "#fff", fontSize: 18, marginLeft: 3 }}>▶</span>
-            </a>
+            {ytUrl && (
+              <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={{ width: 48, height: 48, background: "rgba(255,0,0,0.9)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+                <span style={{ color: "#fff", fontSize: 18, marginLeft: 3 }}>▶</span>
+              </a>
+            )}
           </div>
         </div>
       )}
       <div style={{ padding: "14px 16px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ marginBottom: 8 }}>
           <span style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "2px 7px", background: dark?"#1a0808":"#fff0f0", color: "#ef4444", border: "1px solid #ef444433", borderRadius: 2 }}>▶ YOUTUBE</span>
-          <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>{item.relevance === "high" ? "🔴" : "🟡"}</span>
         </div>
         <h3 style={{ fontSize: 13, fontWeight: 600, color: t.text, lineHeight: 1.45, marginBottom: 6, fontFamily: "Georgia, serif" }}>{cleanText(item.title)}</h3>
         <p style={{ fontSize: 11, color: t.textMid, lineHeight: 1.6, marginBottom: 10 }}>{cleanText(item.summary)}</p>
-        {item.signal && (
-          <div style={{ fontFamily: "monospace", fontSize: 9, color: "#ef4444", background: dark?"#1a0808":"#fff0f0", border: "1px solid #ef444433", borderRadius: 2, padding: "3px 7px", marginBottom: 10 }}>
-            ► {cleanText(item.signal)}
-          </div>
-        )}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>{item.channel}</span>
           {ytUrl && <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: "#ef4444", textDecoration: "none", padding: "2px 6px", border: "1px solid #ef444433", borderRadius: 2 }}>WATCH ↗</a>}
@@ -248,13 +270,14 @@ function VideoCard({ item, idx, dark }) {
 // ─── REDDIT CARD ──────────────────────────────────────────────────────────────
 function RedditCard({ item, idx, dark }) {
   const t = useTheme(dark);
+  const validUrl = isValidUrl(item.url) ? item.url : `https://reddit.com/r/${item.subreddit}`;
   return (
     <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderLeft: "3px solid #ff4500", borderRadius: 3, padding: "16px 18px", opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.06}s`, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <span style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "2px 7px", background: dark?"#1a0a00":"#fff4f0", color: "#ff4500", border: "1px solid #ff450033", borderRadius: 2 }}>r/{item.subreddit}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>▲ {item.score?.toLocaleString()}</span>
-          <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>💬 {item.comments || 0}</span>
+          {item.score > 0 && <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>▲ {item.score?.toLocaleString()}</span>}
+          {item.comments > 0 && <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>💬 {item.comments}</span>}
         </div>
       </div>
       <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, lineHeight: 1.5, marginBottom: 8, fontFamily: "Georgia, serif" }}>{cleanText(item.title)}</h3>
@@ -264,20 +287,20 @@ function RedditCard({ item, idx, dark }) {
           ► {cleanText(item.signal)}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontFamily: "monospace", fontSize: 9, color: item.urgency === "high" ? "#ef4444" : item.urgency === "medium" ? "#f59e0b" : t.textMuted }}>
-          {item.urgency === "high" ? "🔴" : item.urgency === "medium" ? "🟡" : "⚪"} {item.urgency?.toUpperCase()}
-        </span>
-        {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: "#ff4500", textDecoration: "none", padding: "2px 6px", border: "1px solid #ff450033", borderRadius: 2 }}>THREAD ↗</a>}
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <a href={validUrl} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: "#ff4500", textDecoration: "none", padding: "2px 6px", border: "1px solid #ff450033", borderRadius: 2 }}>THREAD ↗</a>
       </div>
     </div>
   );
 }
 
-// ─── TWITTER CARD ─────────────────────────────────────────────────────────────
+// ─── TWITTER CARD — no broken links, search instead ──────────────────────────
 function TwitterCard({ item, idx, dark }) {
   const t = useTheme(dark);
   const engColor = item.engagement === "viral" ? "#ef4444" : item.engagement === "trending" ? "#f59e0b" : "#22c55e";
+  // Search X for the topic instead of broken direct links
+  const searchUrl = `https://x.com/search?q=${encodeURIComponent(cleanText(item.title).slice(0, 60))}&src=typed_query&f=live`;
+
   return (
     <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderLeft: "3px solid #1d9bf0", borderRadius: 3, padding: "16px 18px", opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.06}s`, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -293,7 +316,10 @@ function TwitterCard({ item, idx, dark }) {
       )}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>{item.author}</span>
-        {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: "#1d9bf0", textDecoration: "none", padding: "2px 6px", border: "1px solid #1d9bf033", borderRadius: 2 }}>VIEW ↗</a>}
+        {/* Search X for this topic instead of broken direct link */}
+        <a href={searchUrl} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: "#1d9bf0", textDecoration: "none", padding: "2px 6px", border: "1px solid #1d9bf033", borderRadius: 2 }}>
+          SEARCH 𝕏 ↗
+        </a>
       </div>
     </div>
   );
@@ -330,7 +356,7 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
           {lastUpdated && <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textFaint }}>UPDATED {lastUpdated}</span>}
         </div>
         <button onClick={runAgents} disabled={running} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: running?"transparent":t.accent, border: `1px solid ${t.accent}`, color: running?t.textMuted:(dark?"#080808":"#fff"), cursor: running?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>
-          {running ? "AGENTS RUNNING..." : "↺ RUN ALL AGENTS"}
+          {running?"AGENTS RUNNING...":"↺ RUN ALL AGENTS"}
         </button>
       </div>
       {(running || Object.keys(agentStatuses).length > 0) && (
@@ -352,7 +378,7 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
             {showSkeletons ? [...Array(3)].map((_,i) => <SkeletonCard key={i} dark={dark} />)
             : filtered.length === 0 ? (
               <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>
-                {running ? "AGENTS WORKING..." : "NO SIGNALS — CLICK RUN ALL AGENTS"}
+                {running?"AGENTS WORKING...":"NO SIGNALS — CLICK RUN ALL AGENTS"}
               </div>
             ) : filtered.map((item, i) => <NewsCard key={i} item={item} idx={i} dark={dark} />)}
           </div>
@@ -377,6 +403,10 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
               </div>
             ))}
           </div>
+          <div style={{ background: t.accentDim, border: `1px solid ${t.accent}33`, borderRadius: 3, padding: 14 }}>
+            <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.accent, marginBottom: 6 }}>PRIVATE BETA</div>
+            <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.6 }}>You're one of the first. Tell us what's missing or brilliant.</p>
+          </div>
         </div>
       </div>
     </div>
@@ -384,7 +414,7 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
 }
 
 // ─── VIDEOS PAGE ──────────────────────────────────────────────────────────────
-function VideosPage({ dark, videos, videosLoading, videosLoaded, loadVideos }) {
+function VideosPage({ dark, videos, videosLoading, loadVideos }) {
   const t = useTheme(dark);
   return (
     <div>
@@ -392,10 +422,10 @@ function VideosPage({ dark, videos, videosLoading, videosLoaded, loadVideos }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, marginBottom: 8 }}>AI Video Intelligence</h1>
-            <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>Latest videos from top AI creators — summarised so you get the insight without watching 40 minutes.</p>
+            <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>Latest videos from top AI creators — summarised so you get the insight in seconds.</p>
           </div>
           <button onClick={loadVideos} disabled={videosLoading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: videosLoading?"transparent":t.accent, border: `1px solid ${t.accent}`, color: videosLoading?t.textMuted:(dark?"#080808":"#fff"), cursor: videosLoading?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>
-            {videosLoading ? "SCANNING..." : "↺ REFRESH VIDEOS"}
+            {videosLoading?"SCANNING...":"↺ REFRESH VIDEOS"}
           </button>
         </div>
       </div>
@@ -404,9 +434,7 @@ function VideosPage({ dark, videos, videosLoading, videosLoaded, loadVideos }) {
           {[...Array(6)].map((_,i) => <SkeletonCard key={i} dark={dark} height={280} />)}
         </div>
       ) : videos.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>
-          NO VIDEOS YET — CLICK REFRESH VIDEOS
-        </div>
+        <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>NO VIDEOS YET — CLICK REFRESH VIDEOS</div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
           {videos.map((item, i) => <VideoCard key={i} item={item} idx={i} dark={dark} />)}
@@ -416,8 +444,8 @@ function VideosPage({ dark, videos, videosLoading, videosLoaded, loadVideos }) {
   );
 }
 
-// ─── COMMUNITY PAGE (Reddit) ──────────────────────────────────────────────────
-function CommunityPage({ dark, posts, postsLoading, postsLoaded, loadPosts }) {
+// ─── COMMUNITY PAGE ───────────────────────────────────────────────────────────
+function CommunityPage({ dark, posts, postsLoading, loadPosts }) {
   const t = useTheme(dark);
   return (
     <div>
@@ -428,7 +456,7 @@ function CommunityPage({ dark, posts, postsLoading, postsLoaded, loadPosts }) {
             <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>What the AI community is actually talking about — r/MachineLearning, r/LocalLLaMA, r/artificial and more.</p>
           </div>
           <button onClick={loadPosts} disabled={postsLoading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: postsLoading?"transparent":t.accent, border: `1px solid ${t.accent}`, color: postsLoading?t.textMuted:(dark?"#080808":"#fff"), cursor: postsLoading?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>
-            {postsLoading ? "SCANNING..." : "↺ REFRESH REDDIT"}
+            {postsLoading?"SCANNING...":"↺ REFRESH REDDIT"}
           </button>
         </div>
       </div>
@@ -437,9 +465,7 @@ function CommunityPage({ dark, posts, postsLoading, postsLoaded, loadPosts }) {
           {[...Array(6)].map((_,i) => <SkeletonCard key={i} dark={dark} />)}
         </div>
       ) : posts.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>
-          NO POSTS YET — CLICK REFRESH REDDIT
-        </div>
+        <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>NO POSTS YET — CLICK REFRESH REDDIT</div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
           {posts.map((item, i) => <RedditCard key={i} item={item} idx={i} dark={dark} />)}
@@ -449,8 +475,8 @@ function CommunityPage({ dark, posts, postsLoading, postsLoaded, loadPosts }) {
   );
 }
 
-// ─── TRENDING PAGE (Twitter/X) ────────────────────────────────────────────────
-function TrendingPage({ dark, tweets, tweetsLoading, tweetsLoaded, loadTweets }) {
+// ─── TRENDING PAGE ────────────────────────────────────────────────────────────
+function TrendingPage({ dark, tweets, tweetsLoading, loadTweets }) {
   const t = useTheme(dark);
   return (
     <div>
@@ -458,10 +484,10 @@ function TrendingPage({ dark, tweets, tweetsLoading, tweetsLoaded, loadTweets })
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
           <div>
             <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, marginBottom: 8 }}>Trending on 𝕏</h1>
-            <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>What AI Twitter is buzzing about right now — viral threads, hot takes, breaking discussions.</p>
+            <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>What AI Twitter is buzzing about — click SEARCH 𝕏 to see the live discussion.</p>
           </div>
           <button onClick={loadTweets} disabled={tweetsLoading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: tweetsLoading?"transparent":t.accent, border: `1px solid ${t.accent}`, color: tweetsLoading?t.textMuted:(dark?"#080808":"#fff"), cursor: tweetsLoading?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>
-            {tweetsLoading ? "SCANNING..." : "↺ REFRESH TRENDS"}
+            {tweetsLoading?"SCANNING...":"↺ REFRESH TRENDS"}
           </button>
         </div>
       </div>
@@ -470,9 +496,7 @@ function TrendingPage({ dark, tweets, tweetsLoading, tweetsLoaded, loadTweets })
           {[...Array(6)].map((_,i) => <SkeletonCard key={i} dark={dark} />)}
         </div>
       ) : tweets.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>
-          NO TRENDS YET — CLICK REFRESH TRENDS
-        </div>
+        <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>NO TRENDS YET — CLICK REFRESH TRENDS</div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
           {tweets.map((item, i) => <TwitterCard key={i} item={item} idx={i} dark={dark} />)}
@@ -570,11 +594,11 @@ function SubmitPage({ dark }) {
 function AboutPage({ dark }) {
   const t = useTheme(dark);
   const sections = [
-    { title: "What is WOAI?", body: "WOAI (World of AI) is an AI-native intelligence platform monitoring the global AI landscape in real time. Specialist agents scan hundreds of sources simultaneously — no editors, no agendas, no hype filtering." },
-    { title: "How does it work?", body: "Specialist AI agents run in parallel across news feeds, YouTube, Reddit, and Twitter/X — each focused on a specific vertical. They search the web, extract signals, assess urgency, and surface what actually matters." },
+    { title: "What is WOAI?", body: "WOAI (World of AI) is an AI-native intelligence platform monitoring the global AI landscape in real time. Specialist agents scan news, YouTube, Reddit, and Twitter simultaneously — no editors, no agendas, no hype." },
+    { title: "How does it work?", body: "Specialist AI agents run in parallel across multiple verticals: model releases, funding, research, tools, geopolitics, and bio+AI. They search the web, extract signals, and surface what actually matters." },
     { title: "Why no hype?", body: "99% of AI news coverage is PR-driven cheerleading or panic. We built WOAI because serious builders, investors, and thinkers needed a feed that treats them like adults." },
     { title: "Who is this for?", body: "AI founders, investors, researchers, CTOs, and anyone who needs to stay genuinely informed without spending 3 hours a day reading newsletters." },
-    { title: "This is Beta", body: "WOAI is in private beta. Sharing with a small trusted group first. If you have feedback — what's missing, what's wrong, what you'd pay for — Submit Tip is your direct line to us." },
+    { title: "This is Beta", body: "WOAI is in private beta. Sharing with a small trusted group first. Your feedback directly shapes what this becomes." },
   ];
   return (
     <div style={{ maxWidth: 620 }}>
@@ -603,29 +627,24 @@ export default function WOAI() {
   const [dark, setDark] = useState(false);
   const t = useTheme(dark);
 
-  // Feed state
   const [news, setNews] = useState([]);
   const [agentStatuses, setAgentStatuses] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [running, setRunning] = useState(false);
 
-  // Leaderboard state
   const [lbData, setLbData] = useState({});
   const [lbLoading, setLbLoading] = useState(false);
   const [lbLastFetch, setLbLastFetch] = useState(null);
   const [lbLoaded, setLbLoaded] = useState(false);
 
-  // YouTube state
   const [videos, setVideos] = useState([]);
   const [videosLoading, setVideosLoading] = useState(false);
   const [videosLoaded, setVideosLoaded] = useState(false);
 
-  // Reddit state
   const [posts, setPosts] = useState([]);
   const [postsLoading, setPostsLoading] = useState(false);
   const [postsLoaded, setPostsLoaded] = useState(false);
 
-  // Twitter state
   const [tweets, setTweets] = useState([]);
   const [tweetsLoading, setTweetsLoading] = useState(false);
   const [tweetsLoaded, setTweetsLoaded] = useState(false);
@@ -687,15 +706,12 @@ export default function WOAI() {
     setTweetsLoading(false);
   }, []);
 
-  // Load on startup
   useEffect(() => { runAgents(); }, []);
   useEffect(() => { if (!lbLoaded) loadLeaderboard(); }, [lbLoaded]);
-
-  // Load section data when first visited
   useEffect(() => {
-    if (page === "VIDEOS" && !videosLoaded && !videosLoading) loadVideos();
-    if (page === "COMMUNITY" && !postsLoaded && !postsLoading) loadPosts();
-    if (page === "TRENDING" && !tweetsLoaded && !tweetsLoading) loadTweets();
+    if (page === "VIDEOS"    && !videosLoaded && !videosLoading)  loadVideos();
+    if (page === "COMMUNITY" && !postsLoaded  && !postsLoading)   loadPosts();
+    if (page === "TRENDING"  && !tweetsLoaded && !tweetsLoading)  loadTweets();
   }, [page]);
 
   return (
@@ -709,15 +725,15 @@ export default function WOAI() {
         a { color: inherit; }
       `}</style>
 
-      <nav style={{ borderBottom: `1px solid ${t.border}`, padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: t.bg, position: "sticky", top: 0, zIndex: 100, flexWrap: "wrap", gap: 0 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 0, height: 54, flexWrap: "wrap" }}>
-          <div onClick={() => setPage("FEED")} style={{ cursor: "pointer", display: "flex", alignItems: "baseline", gap: 6, marginRight: 20 }}>
+      <nav style={{ borderBottom: `1px solid ${t.border}`, padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: t.bg, position: "sticky", top: 0, zIndex: 100 }}>
+        <div style={{ display: "flex", alignItems: "center", height: 54 }}>
+          <div onClick={() => setPage("FEED")} style={{ cursor: "pointer", display: "flex", alignItems: "baseline", gap: 6, marginRight: 16 }}>
             <span style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 700, letterSpacing: 4, color: t.accent }}>WOAI</span>
-            <span style={{ fontFamily: "monospace", fontSize: 8, letterSpacing: 2, color: t.textMuted }}>WORLD OF AI</span>
+            <span style={{ fontFamily: "monospace", fontSize: 8, letterSpacing: 2, color: t.textMuted, display: "none" }}>WORLD OF AI</span>
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap" }}>
+          <div style={{ display: "flex" }}>
             {NAV.map(n => (
-              <button key={n} onClick={() => setPage(n)} style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "0 10px", height: 54, background: "transparent", border: "none", borderBottom: page===n?`2px solid ${t.accent}`:"2px solid transparent", color: page===n?t.accent:t.textMuted, cursor: "pointer", fontWeight: page===n?700:400 }}>{n}</button>
+              <button key={n} onClick={() => setPage(n)} style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1, padding: "0 9px", height: 54, background: "transparent", border: "none", borderBottom: page===n?`2px solid ${t.accent}`:"2px solid transparent", color: page===n?t.accent:t.textMuted, cursor: "pointer", fontWeight: page===n?700:400, whiteSpace: "nowrap" }}>{n}</button>
             ))}
           </div>
         </div>
@@ -733,9 +749,9 @@ export default function WOAI() {
 
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px" }}>
         {page === "FEED"        && <FeedPage dark={dark} news={news} agentStatuses={agentStatuses} lastUpdated={lastUpdated} running={running} runAgents={runAgents} />}
-        {page === "VIDEOS"      && <VideosPage dark={dark} videos={videos} videosLoading={videosLoading} videosLoaded={videosLoaded} loadVideos={loadVideos} />}
-        {page === "COMMUNITY"   && <CommunityPage dark={dark} posts={posts} postsLoading={postsLoading} postsLoaded={postsLoaded} loadPosts={loadPosts} />}
-        {page === "TRENDING"    && <TrendingPage dark={dark} tweets={tweets} tweetsLoading={tweetsLoading} tweetsLoaded={tweetsLoaded} loadTweets={loadTweets} />}
+        {page === "VIDEOS"      && <VideosPage dark={dark} videos={videos} videosLoading={videosLoading} loadVideos={loadVideos} />}
+        {page === "COMMUNITY"   && <CommunityPage dark={dark} posts={posts} postsLoading={postsLoading} loadPosts={loadPosts} />}
+        {page === "TRENDING"    && <TrendingPage dark={dark} tweets={tweets} tweetsLoading={tweetsLoading} loadTweets={loadTweets} />}
         {page === "LEADERBOARD" && <LeaderboardPage dark={dark} lbData={lbData} lbLoading={lbLoading} lbLastFetch={lbLastFetch} loadLeaderboard={loadLeaderboard} />}
         {page === "SUBMIT TIP"  && <SubmitPage dark={dark} />}
         {page === "ABOUT"       && <AboutPage dark={dark} />}
