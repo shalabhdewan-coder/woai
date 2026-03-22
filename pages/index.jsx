@@ -75,8 +75,18 @@ async function callClaude(prompt, maxTokens = 2000) {
   return text;
 }
 
+function stripCites(text) {
+  if (!text) return text;
+  return text.replace(/<cite[^>]*>/g, "").replace(/<\/cite>/g, "").trim();
+}
+
 function parseJSON(raw, bracket = "[") {
-  const cleaned = raw.replace(/```json|```/g, "").trim();
+  if (!raw) return null;
+  const cleaned = raw
+    .replace(/```json|```/g, "")
+    .replace(/<cite[^>]*>/g, "")
+    .replace(/<\/cite>/g, "")
+    .trim();
   const open  = bracket === "[" ? cleaned.indexOf("[")  : cleaned.indexOf("{");
   const close = bracket === "[" ? cleaned.lastIndexOf("]") : cleaned.lastIndexOf("}");
   if (open === -1 || close === -1) return null;
@@ -115,7 +125,7 @@ function NewsCard({ item, idx, dark }) {
   const [voted, setVoted] = useState(null);
   const [copied, setCopied] = useState(false);
   const share = () => {
-    navigator.clipboard?.writeText(`${item.title} — via WOAI (woai.vercel.app)`);
+    navigator.clipboard?.writeText(`${stripCites(item.title)} — via WOAI (woai.vercel.app)`);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
   return (
@@ -135,7 +145,7 @@ function NewsCard({ item, idx, dark }) {
       <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, lineHeight: 1.5, marginBottom: 8, fontFamily: "Georgia, serif" }}>
         {item.title}
       </h3>
-      <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.7, marginBottom: 10, flex: 1 }}>{item.summary}</p>
+      <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.7, marginBottom: 10, flex: 1 }}>{stripCites(item.summary)}</p>
       {item.signal && (
         <div style={{ fontFamily: "monospace", fontSize: 10, color: cat.text, background: cat.bg, border: `1px solid ${cat.border}`, borderRadius: 2, padding: "4px 8px", marginBottom: 10 }}>
           ► {item.signal}
