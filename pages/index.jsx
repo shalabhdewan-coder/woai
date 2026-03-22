@@ -13,12 +13,12 @@ const CATEGORIES = [
 ];
 
 const AGENTS = [
-  { id: "models",      label: "Model Tracker",    icon: "◈", focus: "new AI model releases GPT Claude Gemini Llama Mistral" },
-  { id: "funding",     label: "Money Flow",        icon: "◆", focus: "AI startup funding rounds acquisitions IPO investment" },
-  { id: "research",    label: "Research Radar",    icon: "◉", focus: "AI research papers breakthroughs machine learning" },
-  { id: "tools",       label: "Tool Scout",        icon: "◐", focus: "new AI tools products launches developer APIs" },
-  { id: "geopolitics", label: "Geo Intelligence",  icon: "◑", focus: "AI regulation policy US China EU government" },
-  { id: "biotech",     label: "Bio+AI Monitor",    icon: "◒", focus: "AI healthcare biotech drug discovery longevity" },
+  { id: "models",      label: "Model Tracker",    icon: "◈", focus: "new AI model releases GPT Claude Gemini Llama Mistral benchmarks" },
+  { id: "funding",     label: "Money Flow",        icon: "◆", focus: "AI startup funding rounds acquisitions IPO investment venture capital" },
+  { id: "research",    label: "Research Radar",    icon: "◉", focus: "AI research papers breakthroughs machine learning deep learning" },
+  { id: "tools",       label: "Tool Scout",        icon: "◐", focus: "new AI tools products launches developer APIs SaaS" },
+  { id: "geopolitics", label: "Geo Intelligence",  icon: "◑", focus: "AI regulation policy US China EU government export controls" },
+  { id: "biotech",     label: "Bio+AI Monitor",    icon: "◒", focus: "AI healthcare biotech drug discovery longevity CRISPR" },
 ];
 
 const LEADERBOARD_FIELDS = ["Coding", "Writing", "Image Gen", "Research", "Video", "Voice", "Data Analysis", "Agents"];
@@ -58,8 +58,8 @@ function useTheme(dark) {
   };
 }
 
-// Clean API call — sends agentId and agentFocus, gets back { text: "..." }
-async function fetchSignals(agentId, agentFocus) {
+// Single API call function used by both feed and leaderboard
+async function apiCall(agentId, agentFocus) {
   const res = await fetch("/api/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -69,36 +69,14 @@ async function fetchSignals(agentId, agentFocus) {
   return data.text || "";
 }
 
-// Leaderboard still uses Claude directly via separate call
-async function fetchLeaderboardData(prompt) {
-  const res = await fetch("/api/claude", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      agentId: "leaderboard",
-      agentFocus: prompt,
-    }),
-  });
-  const data = await res.json();
-  return data.text || "";
-}
-
 function cleanText(text) {
   if (!text) return "";
-  return text
-    .replace(/<cite[^>]*>/g, "")
-    .replace(/<\/cite>/g, "")
-    .replace(/\[\d+\]/g, "")
-    .trim();
+  return text.replace(/<cite[^>]*>/g, "").replace(/<\/cite>/g, "").replace(/\[\d+\]/g, "").trim();
 }
 
 function parseJSON(raw, bracket = "[") {
   if (!raw) return null;
-  const cleaned = raw
-    .replace(/```json|```/g, "")
-    .replace(/<cite[^>]*>/g, "")
-    .replace(/<\/cite>/g, "")
-    .trim();
+  const cleaned = raw.replace(/```json|```/g, "").replace(/<cite[^>]*>/g, "").replace(/<\/cite>/g, "").trim();
   const open  = bracket === "[" ? cleaned.indexOf("[")  : cleaned.indexOf("{");
   const close = bracket === "[" ? cleaned.lastIndexOf("]") : cleaned.lastIndexOf("}");
   if (open === -1 || close === -1) return null;
@@ -107,11 +85,9 @@ function parseJSON(raw, bracket = "[") {
 
 function Badge({ label, cat }) {
   return (
-    <span style={{
-      fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5,
-      padding: "2px 7px", background: cat.bg, color: cat.text,
-      border: `1px solid ${cat.border}`, borderRadius: 2, whiteSpace: "nowrap",
-    }}>{label?.toUpperCase()}</span>
+    <span style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "2px 7px", background: cat.bg, color: cat.text, border: `1px solid ${cat.border}`, borderRadius: 2, whiteSpace: "nowrap" }}>
+      {label?.toUpperCase()}
+    </span>
   );
 }
 
@@ -153,25 +129,15 @@ function NewsCard({ item, idx, dark }) {
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
   return (
-    <div style={{
-      background: t.surface, border: `1px solid ${t.border}`,
-      borderLeft: `3px solid ${cat.border}`, borderRadius: 3,
-      padding: "16px 18px", opacity: 0,
-      animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.05}s`,
-      display: "flex", flexDirection: "column",
-    }}>
+    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderLeft: `3px solid ${cat.border}`, borderRadius: 3, padding: "16px 18px", opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.05}s`, display: "flex", flexDirection: "column" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
         <Badge label={item.category} cat={cat} />
         <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>
           {item.urgency === "high" ? "🔴" : item.urgency === "medium" ? "🟡" : "⚪"} {item.urgency?.toUpperCase()}
         </span>
       </div>
-      <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, lineHeight: 1.5, marginBottom: 8, fontFamily: "Georgia, serif" }}>
-        {cleanText(item.title)}
-      </h3>
-      <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.7, marginBottom: 10, flex: 1 }}>
-        {cleanText(item.summary)}
-      </p>
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, lineHeight: 1.5, marginBottom: 8, fontFamily: "Georgia, serif" }}>{cleanText(item.title)}</h3>
+      <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.7, marginBottom: 10, flex: 1 }}>{cleanText(item.summary)}</p>
       {item.signal && (
         <div style={{ fontFamily: "monospace", fontSize: 10, color: cat.text, background: cat.bg, border: `1px solid ${cat.border}`, borderRadius: 2, padding: "4px 8px", marginBottom: 10 }}>
           ► {cleanText(item.signal)}
@@ -181,36 +147,25 @@ function NewsCard({ item, idx, dark }) {
         <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>{item.source}</span>
         <div style={{ display: "flex", gap: 5 }}>
           {["up", "dn"].map(v => (
-            <button key={v} onClick={() => setVoted(p => p === v ? null : v)} style={{
-              fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer",
-              background: voted === v ? (v === "up" ? "#22c55e22" : "#f8717122") : "transparent",
-              border: `1px solid ${voted === v ? (v === "up" ? "#22c55e" : "#f87171") : t.borderMid}`,
-              color: voted === v ? (v === "up" ? "#22c55e" : "#f87171") : t.textMuted,
-            }}>{v === "up" ? "👍" : "👎"}</button>
+            <button key={v} onClick={() => setVoted(p => p === v ? null : v)} style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: voted === v ? (v === "up" ? "#22c55e22" : "#f8717122") : "transparent", border: `1px solid ${voted === v ? (v === "up" ? "#22c55e" : "#f87171") : t.borderMid}`, color: voted === v ? (v === "up" ? "#22c55e" : "#f87171") : t.textMuted }}>
+              {v === "up" ? "👍" : "👎"}
+            </button>
           ))}
-          <button onClick={share} style={{
-            fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer",
-            background: "transparent", border: `1px solid ${t.borderMid}`, color: copied ? "#22c55e" : t.textMuted,
-          }}>{copied ? "✓" : "SHARE"}</button>
+          <button onClick={share} style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: "transparent", border: `1px solid ${t.borderMid}`, color: copied ? "#22c55e" : t.textMuted }}>
+            {copied ? "✓" : "SHARE"}
+          </button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── FEED PAGE ────────────────────────────────────────────────────────────────
 function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }) {
   const t = useTheme(dark);
   const [activeTab, setActiveTab] = useState("all");
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
-
-  const stats = {
-    total: news.length,
-    high: news.filter(n => n.urgency === "high").length,
-    sources: new Set(news.map(n => n.source)).size,
-  };
-
+  const stats = { total: news.length, high: news.filter(n => n.urgency === "high").length, sources: new Set(news.map(n => n.source)).size };
   const filtered = activeTab === "all" ? news : news.filter(n => n.category === activeTab);
   const catDone = activeTab === "all" ? !running : agentStatuses[activeTab] === "done";
   const showSkeletons = !catDone && filtered.length === 0;
@@ -221,12 +176,8 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
         <div style={{ fontFamily: "Georgia, serif", fontSize: 12, color: t.textMuted, letterSpacing: 1, marginBottom: 6 }}>
           {new Date().toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).toUpperCase()}
         </div>
-        <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, lineHeight: 1.25, marginBottom: 8, maxWidth: 560 }}>
-          Every AI move that matters, right now.
-        </h1>
-        <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>
-          6 specialist agents scanning the web simultaneously — models, money, research, tools, policy, and biotech.
-        </p>
+        <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, lineHeight: 1.25, marginBottom: 8, maxWidth: 560 }}>Every AI move that matters, right now.</h1>
+        <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>6 specialist agents scanning the web simultaneously — models, money, research, tools, policy, and biotech.</p>
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
@@ -239,12 +190,9 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
           ))}
           {lastUpdated && <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textFaint }}>UPDATED {lastUpdated}</span>}
         </div>
-        <button onClick={runAgents} disabled={running} style={{
-          fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px",
-          background: running ? "transparent" : t.accent, border: `1px solid ${t.accent}`,
-          color: running ? t.textMuted : (dark ? "#080808" : "#fff"),
-          cursor: running ? "not-allowed" : "pointer", borderRadius: 2, fontWeight: 700,
-        }}>{running ? "AGENTS RUNNING..." : "↺ RUN ALL AGENTS"}</button>
+        <button onClick={runAgents} disabled={running} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: running ? "transparent" : t.accent, border: `1px solid ${t.accent}`, color: running ? t.textMuted : (dark ? "#080808" : "#fff"), cursor: running ? "not-allowed" : "pointer", borderRadius: 2, fontWeight: 700 }}>
+          {running ? "AGENTS RUNNING..." : "↺ RUN ALL AGENTS"}
+        </button>
       </div>
 
       {(running || Object.keys(agentStatuses).length > 0) && (
@@ -258,16 +206,11 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
         <div>
           <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
             {CATEGORIES.map(cat => (
-              <button key={cat.id} onClick={() => setActiveTab(cat.id)} style={{
-                fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "5px 12px",
-                background: activeTab === cat.id ? t.accent : "transparent",
-                color: activeTab === cat.id ? (dark ? "#080808" : "#fff") : t.textMuted,
-                border: `1px solid ${activeTab === cat.id ? t.accent : t.border}`,
-                cursor: "pointer", borderRadius: 2, fontWeight: activeTab === cat.id ? 700 : 400,
-              }}>{cat.emoji} {cat.label}</button>
+              <button key={cat.id} onClick={() => setActiveTab(cat.id)} style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "5px 12px", background: activeTab === cat.id ? t.accent : "transparent", color: activeTab === cat.id ? (dark ? "#080808" : "#fff") : t.textMuted, border: `1px solid ${activeTab === cat.id ? t.accent : t.border}`, cursor: "pointer", borderRadius: 2, fontWeight: activeTab === cat.id ? 700 : 400 }}>
+                {cat.emoji} {cat.label}
+              </button>
             ))}
           </div>
-
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
             {showSkeletons ? (
               [...Array(3)].map((_, i) => <SkeletonCard key={i} dark={dark} />)
@@ -313,25 +256,26 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
   );
 }
 
-// ─── LEADERBOARD PAGE ─────────────────────────────────────────────────────────
 function LeaderboardPage({ dark }) {
   const t = useTheme(dark);
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
   const [lastFetch, setLastFetch] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
-      const prompt = `List the best AI tools right now for these categories: ${LEADERBOARD_FIELDS.join(", ")}. For each give top 3 tools with a one-line reason. Return ONLY raw JSON: {"Coding":[{"name":"X","reason":"..."}],...}`;
-      const raw = await fetchLeaderboardData(prompt);
+      const raw = await apiCall("leaderboard", "");
       const parsed = parseJSON(raw, "{");
-      if (parsed) { setData(parsed); setLastFetch(new Date().toLocaleTimeString()); }
+      if (parsed) { setData(parsed); setLastFetch(new Date().toLocaleTimeString()); setLoaded(true); }
     } catch (_) {}
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  // Only load once, not every time tab is visited
+  useEffect(() => { if (!loaded) load(); }, []);
+
   const medals = ["🥇", "🥈", "🥉"];
 
   return (
@@ -342,7 +286,9 @@ function LeaderboardPage({ dark }) {
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         {lastFetch && <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>LAST SCANNED: {lastFetch}</span>}
-        <button onClick={load} disabled={loading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: loading ? "transparent" : t.accent, border: `1px solid ${t.accent}`, color: loading ? t.textMuted : (dark ? "#080808" : "#fff"), cursor: loading ? "not-allowed" : "pointer", borderRadius: 2, fontWeight: 700 }}>{loading ? "SCANNING..." : "↺ REFRESH RANKINGS"}</button>
+        <button onClick={load} disabled={loading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: loading ? "transparent" : t.accent, border: `1px solid ${t.accent}`, color: loading ? t.textMuted : (dark ? "#080808" : "#fff"), cursor: loading ? "not-allowed" : "pointer", borderRadius: 2, fontWeight: 700 }}>
+          {loading ? "SCANNING..." : "↺ REFRESH RANKINGS"}
+        </button>
       </div>
       {loading && Object.keys(data).length === 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
@@ -375,7 +321,6 @@ function LeaderboardPage({ dark }) {
   );
 }
 
-// ─── SUBMIT PAGE ──────────────────────────────────────────────────────────────
 function SubmitPage({ dark }) {
   const t = useTheme(dark);
   const [form, setForm] = useState({ name: "", email: "", category: "models", tip: "", source: "" });
@@ -418,7 +363,6 @@ function SubmitPage({ dark }) {
   );
 }
 
-// ─── ABOUT PAGE ───────────────────────────────────────────────────────────────
 function AboutPage({ dark }) {
   const t = useTheme(dark);
   const sections = [
@@ -449,35 +393,28 @@ function AboutPage({ dark }) {
   );
 }
 
-// ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function WOAI() {
   const [page, setPage] = useState("FEED");
   const [dark, setDark] = useState(false);
   const t = useTheme(dark);
-
   const [news, setNews] = useState([]);
   const [agentStatuses, setAgentStatuses] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [running, setRunning] = useState(false);
 
   const runAgents = useCallback(async () => {
-    setRunning(true);
-    setNews([]);
-    setAgentStatuses({});
-
+    setRunning(true); setNews([]); setAgentStatuses({});
     for (const agent of AGENTS) {
       setAgentStatuses(prev => ({ ...prev, [agent.id]: "scanning" }));
       try {
-        const raw = await fetchSignals(agent.id, agent.focus);
+        const raw = await apiCall(agent.id, agent.focus);
         const parsed = parseJSON(raw, "[");
         if (parsed && Array.isArray(parsed) && parsed.length > 0) {
-          const tagged = parsed.map(item => ({ ...item, category: agent.id }));
-          setNews(prev => [...prev, ...tagged]);
+          setNews(prev => [...prev, ...parsed.map(item => ({ ...item, category: agent.id }))]);
         }
       } catch (_) {}
       setAgentStatuses(prev => ({ ...prev, [agent.id]: "done" }));
     }
-
     setLastUpdated(new Date().toLocaleTimeString());
     setRunning(false);
   }, []);
