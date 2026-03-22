@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 
-const NAV = ["FEED", "LEADERBOARD", "SUBMIT TIP", "ABOUT"];
+const NAV = ["FEED", "VIDEOS", "COMMUNITY", "TRENDING", "LEADERBOARD", "SUBMIT TIP", "ABOUT"];
 
 const CATEGORIES = [
   { id: "all",         label: "ALL SIGNALS",  emoji: "◎" },
@@ -58,7 +58,6 @@ function useTheme(dark) {
   };
 }
 
-// Single API call function used by both feed and leaderboard
 async function apiCall(agentId, agentFocus) {
   const res = await fetch("/api/claude", {
     method: "POST",
@@ -67,6 +66,24 @@ async function apiCall(agentId, agentFocus) {
   });
   const data = await res.json();
   return data.text || "";
+}
+
+async function youtubeCall() {
+  const res = await fetch("/api/youtube", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+  const data = await res.json();
+  return data.text || "[]";
+}
+
+async function redditCall() {
+  const res = await fetch("/api/reddit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+  const data = await res.json();
+  return data.text || "[]";
+}
+
+async function twitterCall() {
+  const res = await fetch("/api/twitter", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+  const data = await res.json();
+  return data.text || "[]";
 }
 
 function cleanText(text) {
@@ -107,13 +124,13 @@ function AgentStatus({ agent, status, dark }) {
   );
 }
 
-function SkeletonCard({ dark }) {
+function SkeletonCard({ dark, height = 180 }) {
   const t = useTheme(dark);
   return (
-    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, padding: 18, height: 180, position: "relative", overflow: "hidden" }}>
+    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, padding: 18, height, position: "relative", overflow: "hidden" }}>
       <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg,transparent,${t.accentDim},transparent)`, animation: "scan 1.5s infinite" }} />
       {[35, 100, 85, 70, 45].map((w, j) => (
-        <div key={j} style={{ height: j === 0 || j === 4 ? 8 : 13, background: dark ? "#1a1a1a" : "#eeeeea", borderRadius: 2, width: `${w}%`, marginBottom: 10 }} />
+        <div key={j} style={{ height: j === 0 || j === 4 ? 8 : 12, background: dark ? "#1a1a1a" : "#eeeeea", borderRadius: 2, width: `${w}%`, marginBottom: 10 }} />
       ))}
     </div>
   );
@@ -124,12 +141,28 @@ function NewsCard({ item, idx, dark }) {
   const cat = t.cats[item.category] || t.cats.tools;
   const [voted, setVoted] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const [fullArticle, setFullArticle] = useState("");
+  const [loadingArticle, setLoadingArticle] = useState(false);
+
   const share = () => {
     navigator.clipboard?.writeText(`${cleanText(item.title)} — via WOAI (woai.vercel.app)`);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
+
+  const loadFullArticle = async () => {
+    if (fullArticle) { setExpanded(e => !e); return; }
+    setExpanded(true);
+    setLoadingArticle(true);
+    try {
+      const raw = await apiCall("expand", `Write a 400 word analysis of: "${cleanText(item.title)}". Cover what happened, why it matters, background context, and what to watch next. Flowing paragraphs only.`);
+      setFullArticle(cleanText(raw));
+    } catch (_) { setFullArticle("Unable to load full article."); }
+    setLoadingArticle(false);
+  };
+
   return (
-    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderLeft: `3px solid ${cat.border}`, borderRadius: 3, padding: "16px 18px", opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.05}s`, display: "flex", flexDirection: "column" }}>
+    <div style={{ background: t.surface, border: `1px solid ${expanded ? cat.border : t.border}`, borderLeft: `3px solid ${cat.border}`, borderRadius: 3, padding: "16px 18px", opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.05}s`, display: "flex", flexDirection: "column", transition: "border-color 0.2s" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
         <Badge label={item.category} cat={cat} />
         <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>
@@ -138,28 +171,135 @@ function NewsCard({ item, idx, dark }) {
       </div>
       <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, lineHeight: 1.5, marginBottom: 8, fontFamily: "Georgia, serif" }}>{cleanText(item.title)}</h3>
       <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.7, marginBottom: 10, flex: 1 }}>{cleanText(item.summary)}</p>
+      {expanded && (
+        <div style={{ borderTop: `1px solid ${t.border}`, paddingTop: 14, marginBottom: 14 }}>
+          {loadingArticle ? (
+            <div style={{ fontFamily: "monospace", fontSize: 11, color: t.accent, animation: "pulse 1s infinite" }}>● GENERATING FULL ANALYSIS...</div>
+          ) : (
+            <div style={{ fontSize: 13, color: t.textMid, lineHeight: 1.8 }}>{fullArticle}</div>
+          )}
+        </div>
+      )}
       {item.signal && (
         <div style={{ fontFamily: "monospace", fontSize: 10, color: cat.text, background: cat.bg, border: `1px solid ${cat.border}`, borderRadius: 2, padding: "4px 8px", marginBottom: 10 }}>
           ► {cleanText(item.signal)}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>{item.source}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>{item.source}</span>
+          {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: cat.text, textDecoration: "none", padding: "2px 6px", border: `1px solid ${cat.border}`, borderRadius: 2 }}>SOURCE ↗</a>}
+        </div>
         <div style={{ display: "flex", gap: 5 }}>
-          {["up", "dn"].map(v => (
-            <button key={v} onClick={() => setVoted(p => p === v ? null : v)} style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: voted === v ? (v === "up" ? "#22c55e22" : "#f8717122") : "transparent", border: `1px solid ${voted === v ? (v === "up" ? "#22c55e" : "#f87171") : t.borderMid}`, color: voted === v ? (v === "up" ? "#22c55e" : "#f87171") : t.textMuted }}>
-              {v === "up" ? "👍" : "👎"}
+          <button onClick={loadFullArticle} style={{ fontFamily: "monospace", fontSize: 9, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: expanded ? cat.bg : "transparent", border: `1px solid ${expanded ? cat.border : t.borderMid}`, color: expanded ? cat.text : t.textMuted }}>
+            {expanded ? "▲ LESS" : "▼ FULL STORY"}
+          </button>
+          {["up","dn"].map(v => (
+            <button key={v} onClick={() => setVoted(p => p===v?null:v)} style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: voted===v?(v==="up"?"#22c55e22":"#f8717122"):"transparent", border: `1px solid ${voted===v?(v==="up"?"#22c55e":"#f87171"):t.borderMid}`, color: voted===v?(v==="up"?"#22c55e":"#f87171"):t.textMuted }}>
+              {v==="up"?"👍":"👎"}
             </button>
           ))}
-          <button onClick={share} style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: "transparent", border: `1px solid ${t.borderMid}`, color: copied ? "#22c55e" : t.textMuted }}>
-            {copied ? "✓" : "SHARE"}
-          </button>
+          <button onClick={share} style={{ fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer", background: "transparent", border: `1px solid ${t.borderMid}`, color: copied?"#22c55e":t.textMuted }}>{copied?"✓":"SHARE"}</button>
         </div>
       </div>
     </div>
   );
 }
 
+// ─── VIDEO CARD ───────────────────────────────────────────────────────────────
+function VideoCard({ item, idx, dark }) {
+  const t = useTheme(dark);
+  const ytUrl = item.videoId ? `https://www.youtube.com/watch?v=${item.videoId}` : item.url;
+  const thumbUrl = item.videoId ? `https://img.youtube.com/vi/${item.videoId}/mqdefault.jpg` : null;
+
+  return (
+    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.06}s`, overflow: "hidden" }}>
+      {thumbUrl && (
+        <div style={{ position: "relative", paddingTop: "56.25%", background: "#000", overflow: "hidden" }}>
+          <img src={thumbUrl} alt={item.title} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={{ width: 48, height: 48, background: "rgba(255,0,0,0.9)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", textDecoration: "none" }}>
+              <span style={{ color: "#fff", fontSize: 18, marginLeft: 3 }}>▶</span>
+            </a>
+          </div>
+        </div>
+      )}
+      <div style={{ padding: "14px 16px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "2px 7px", background: dark?"#1a0808":"#fff0f0", color: "#ef4444", border: "1px solid #ef444433", borderRadius: 2 }}>▶ YOUTUBE</span>
+          <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>{item.relevance === "high" ? "🔴" : "🟡"}</span>
+        </div>
+        <h3 style={{ fontSize: 13, fontWeight: 600, color: t.text, lineHeight: 1.45, marginBottom: 6, fontFamily: "Georgia, serif" }}>{cleanText(item.title)}</h3>
+        <p style={{ fontSize: 11, color: t.textMid, lineHeight: 1.6, marginBottom: 10 }}>{cleanText(item.summary)}</p>
+        {item.signal && (
+          <div style={{ fontFamily: "monospace", fontSize: 9, color: "#ef4444", background: dark?"#1a0808":"#fff0f0", border: "1px solid #ef444433", borderRadius: 2, padding: "3px 7px", marginBottom: 10 }}>
+            ► {cleanText(item.signal)}
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>{item.channel}</span>
+          {ytUrl && <a href={ytUrl} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: "#ef4444", textDecoration: "none", padding: "2px 6px", border: "1px solid #ef444433", borderRadius: 2 }}>WATCH ↗</a>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── REDDIT CARD ──────────────────────────────────────────────────────────────
+function RedditCard({ item, idx, dark }) {
+  const t = useTheme(dark);
+  return (
+    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderLeft: "3px solid #ff4500", borderRadius: 3, padding: "16px 18px", opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.06}s`, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "2px 7px", background: dark?"#1a0a00":"#fff4f0", color: "#ff4500", border: "1px solid #ff450033", borderRadius: 2 }}>r/{item.subreddit}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>▲ {item.score?.toLocaleString()}</span>
+          <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>💬 {item.comments || 0}</span>
+        </div>
+      </div>
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, lineHeight: 1.5, marginBottom: 8, fontFamily: "Georgia, serif" }}>{cleanText(item.title)}</h3>
+      <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.7, marginBottom: 10, flex: 1 }}>{cleanText(item.summary)}</p>
+      {item.signal && (
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: "#ff4500", background: dark?"#1a0a00":"#fff4f0", border: "1px solid #ff450033", borderRadius: 2, padding: "4px 8px", marginBottom: 10 }}>
+          ► {cleanText(item.signal)}
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontFamily: "monospace", fontSize: 9, color: item.urgency === "high" ? "#ef4444" : item.urgency === "medium" ? "#f59e0b" : t.textMuted }}>
+          {item.urgency === "high" ? "🔴" : item.urgency === "medium" ? "🟡" : "⚪"} {item.urgency?.toUpperCase()}
+        </span>
+        {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: "#ff4500", textDecoration: "none", padding: "2px 6px", border: "1px solid #ff450033", borderRadius: 2 }}>THREAD ↗</a>}
+      </div>
+    </div>
+  );
+}
+
+// ─── TWITTER CARD ─────────────────────────────────────────────────────────────
+function TwitterCard({ item, idx, dark }) {
+  const t = useTheme(dark);
+  const engColor = item.engagement === "viral" ? "#ef4444" : item.engagement === "trending" ? "#f59e0b" : "#22c55e";
+  return (
+    <div style={{ background: t.surface, border: `1px solid ${t.border}`, borderLeft: "3px solid #1d9bf0", borderRadius: 3, padding: "16px 18px", opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.06}s`, display: "flex", flexDirection: "column" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "2px 7px", background: dark?"#00101a":"#f0f8ff", color: "#1d9bf0", border: "1px solid #1d9bf033", borderRadius: 2 }}>𝕏 TRENDING</span>
+        <span style={{ fontFamily: "monospace", fontSize: 9, color: engColor, padding: "2px 6px", border: `1px solid ${engColor}33`, borderRadius: 2 }}>{item.engagement?.toUpperCase()}</span>
+      </div>
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: t.text, lineHeight: 1.5, marginBottom: 8, fontFamily: "Georgia, serif" }}>{cleanText(item.title)}</h3>
+      <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.7, marginBottom: 10, flex: 1 }}>{cleanText(item.summary)}</p>
+      {item.signal && (
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: "#1d9bf0", background: dark?"#00101a":"#f0f8ff", border: "1px solid #1d9bf033", borderRadius: 2, padding: "4px 8px", marginBottom: 10 }}>
+          ► {cleanText(item.signal)}
+        </div>
+      )}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>{item.author}</span>
+        {item.url && <a href={item.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "monospace", fontSize: 9, color: "#1d9bf0", textDecoration: "none", padding: "2px 6px", border: "1px solid #1d9bf033", borderRadius: 2 }}>VIEW ↗</a>}
+      </div>
+    </div>
+  );
+}
+
+// ─── FEED PAGE ────────────────────────────────────────────────────────────────
 function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }) {
   const t = useTheme(dark);
   const [activeTab, setActiveTab] = useState("all");
@@ -177,9 +317,8 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
           {new Date().toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).toUpperCase()}
         </div>
         <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, lineHeight: 1.25, marginBottom: 8, maxWidth: 560 }}>Every AI move that matters, right now.</h1>
-        <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>6 specialist agents scanning the web simultaneously — models, money, research, tools, policy, and biotech.</p>
+        <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>6 specialist agents scanning the web — models, money, research, tools, policy, and biotech.</p>
       </div>
-
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-end" }}>
           {[{ l: "SIGNALS", v: stats.total || "—" }, { l: "HIGH URGENCY", v: stats.high || "—" }, { l: "SOURCES", v: stats.sources || "—" }].map(s => (
@@ -190,50 +329,42 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
           ))}
           {lastUpdated && <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textFaint }}>UPDATED {lastUpdated}</span>}
         </div>
-        <button onClick={runAgents} disabled={running} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: running ? "transparent" : t.accent, border: `1px solid ${t.accent}`, color: running ? t.textMuted : (dark ? "#080808" : "#fff"), cursor: running ? "not-allowed" : "pointer", borderRadius: 2, fontWeight: 700 }}>
+        <button onClick={runAgents} disabled={running} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: running?"transparent":t.accent, border: `1px solid ${t.accent}`, color: running?t.textMuted:(dark?"#080808":"#fff"), cursor: running?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>
           {running ? "AGENTS RUNNING..." : "↺ RUN ALL AGENTS"}
         </button>
       </div>
-
       {(running || Object.keys(agentStatuses).length > 0) && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 6, marginBottom: 20, padding: 14, background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3 }}>
           <div style={{ gridColumn: "1/-1", fontFamily: "monospace", fontSize: 9, letterSpacing: 3, color: t.accent, marginBottom: 4 }}>AGENT STATUS BOARD</div>
           {AGENTS.map(agent => <AgentStatus key={agent.id} agent={agent} status={agentStatuses[agent.id] || "queued"} dark={dark} />)}
         </div>
       )}
-
       <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 24 }}>
         <div>
           <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
             {CATEGORIES.map(cat => (
-              <button key={cat.id} onClick={() => setActiveTab(cat.id)} style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "5px 12px", background: activeTab === cat.id ? t.accent : "transparent", color: activeTab === cat.id ? (dark ? "#080808" : "#fff") : t.textMuted, border: `1px solid ${activeTab === cat.id ? t.accent : t.border}`, cursor: "pointer", borderRadius: 2, fontWeight: activeTab === cat.id ? 700 : 400 }}>
+              <button key={cat.id} onClick={() => setActiveTab(cat.id)} style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "5px 12px", background: activeTab===cat.id?t.accent:"transparent", color: activeTab===cat.id?(dark?"#080808":"#fff"):t.textMuted, border: `1px solid ${activeTab===cat.id?t.accent:t.border}`, cursor: "pointer", borderRadius: 2, fontWeight: activeTab===cat.id?700:400 }}>
                 {cat.emoji} {cat.label}
               </button>
             ))}
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
-            {showSkeletons ? (
-              [...Array(3)].map((_, i) => <SkeletonCard key={i} dark={dark} />)
-            ) : filtered.length === 0 ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+            {showSkeletons ? [...Array(3)].map((_,i) => <SkeletonCard key={i} dark={dark} />)
+            : filtered.length === 0 ? (
               <div style={{ gridColumn: "1/-1", textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>
                 {running ? "AGENTS WORKING..." : "NO SIGNALS — CLICK RUN ALL AGENTS"}
               </div>
-            ) : (
-              filtered.map((item, i) => <NewsCard key={i} item={item} idx={i} dark={dark} />)
-            )}
+            ) : filtered.map((item, i) => <NewsCard key={i} item={item} idx={i} dark={dark} />)}
           </div>
         </div>
-
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3, padding: 16 }}>
             <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 3, color: t.accent, marginBottom: 8 }}>BETA — STAY IN THE LOOP</div>
             <p style={{ fontSize: 12, color: t.textMid, marginBottom: 12, lineHeight: 1.6 }}>Get the daily AI brief. No noise, just signals.</p>
-            {subscribed ? (
-              <div style={{ fontFamily: "monospace", fontSize: 11, color: "#22c55e" }}>✓ YOU'RE IN.</div>
-            ) : (
+            {subscribed ? <div style={{ fontFamily: "monospace", fontSize: 11, color: "#22c55e" }}>✓ YOU'RE IN.</div> : (
               <div style={{ display: "flex", gap: 6 }}>
                 <input value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" style={{ flex: 1, fontFamily: "monospace", fontSize: 11, padding: "7px 10px", background: t.surface, border: `1px solid ${t.border}`, color: t.text, borderRadius: 2, outline: "none" }} />
-                <button onClick={() => email.includes("@") && setSubscribed(true)} style={{ fontFamily: "monospace", fontSize: 10, padding: "7px 12px", background: t.accent, border: "none", color: dark ? "#080808" : "#fff", cursor: "pointer", borderRadius: 2, fontWeight: 700 }}>JOIN</button>
+                <button onClick={() => email.includes("@") && setSubscribed(true)} style={{ fontFamily: "monospace", fontSize: 10, padding: "7px 12px", background: t.accent, border: "none", color: dark?"#080808":"#fff", cursor: "pointer", borderRadius: 2, fontWeight: 700 }}>JOIN</button>
               </div>
             )}
           </div>
@@ -246,38 +377,115 @@ function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }
               </div>
             ))}
           </div>
-          <div style={{ background: t.accentDim, border: `1px solid ${t.accent}33`, borderRadius: 3, padding: 14 }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.accent, marginBottom: 6 }}>PRIVATE BETA</div>
-            <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.6 }}>You're one of the first. Tell us what's missing, broken, or brilliant.</p>
-          </div>
         </div>
       </div>
     </div>
   );
 }
 
-function LeaderboardPage({ dark }) {
+// ─── VIDEOS PAGE ──────────────────────────────────────────────────────────────
+function VideosPage({ dark, videos, videosLoading, videosLoaded, loadVideos }) {
   const t = useTheme(dark);
-  const [data, setData] = useState({});
-  const [loading, setLoading] = useState(false);
-  const [lastFetch, setLastFetch] = useState(null);
-  const [loaded, setLoaded] = useState(false);
+  return (
+    <div>
+      <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${t.border}`, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, marginBottom: 8 }}>AI Video Intelligence</h1>
+            <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>Latest videos from top AI creators — summarised so you get the insight without watching 40 minutes.</p>
+          </div>
+          <button onClick={loadVideos} disabled={videosLoading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: videosLoading?"transparent":t.accent, border: `1px solid ${t.accent}`, color: videosLoading?t.textMuted:(dark?"#080808":"#fff"), cursor: videosLoading?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>
+            {videosLoading ? "SCANNING..." : "↺ REFRESH VIDEOS"}
+          </button>
+        </div>
+      </div>
+      {videosLoading && videos.length === 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+          {[...Array(6)].map((_,i) => <SkeletonCard key={i} dark={dark} height={280} />)}
+        </div>
+      ) : videos.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>
+          NO VIDEOS YET — CLICK REFRESH VIDEOS
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+          {videos.map((item, i) => <VideoCard key={i} item={item} idx={i} dark={dark} />)}
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const raw = await apiCall("leaderboard", "");
-      const parsed = parseJSON(raw, "{");
-      if (parsed) { setData(parsed); setLastFetch(new Date().toLocaleTimeString()); setLoaded(true); }
-    } catch (_) {}
-    setLoading(false);
-  };
+// ─── COMMUNITY PAGE (Reddit) ──────────────────────────────────────────────────
+function CommunityPage({ dark, posts, postsLoading, postsLoaded, loadPosts }) {
+  const t = useTheme(dark);
+  return (
+    <div>
+      <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${t.border}`, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, marginBottom: 8 }}>Community Intelligence</h1>
+            <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>What the AI community is actually talking about — r/MachineLearning, r/LocalLLaMA, r/artificial and more.</p>
+          </div>
+          <button onClick={loadPosts} disabled={postsLoading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: postsLoading?"transparent":t.accent, border: `1px solid ${t.accent}`, color: postsLoading?t.textMuted:(dark?"#080808":"#fff"), cursor: postsLoading?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>
+            {postsLoading ? "SCANNING..." : "↺ REFRESH REDDIT"}
+          </button>
+        </div>
+      </div>
+      {postsLoading && posts.length === 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+          {[...Array(6)].map((_,i) => <SkeletonCard key={i} dark={dark} />)}
+        </div>
+      ) : posts.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>
+          NO POSTS YET — CLICK REFRESH REDDIT
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+          {posts.map((item, i) => <RedditCard key={i} item={item} idx={i} dark={dark} />)}
+        </div>
+      )}
+    </div>
+  );
+}
 
-  // Only load once, not every time tab is visited
-  useEffect(() => { if (!loaded) load(); }, []);
+// ─── TRENDING PAGE (Twitter/X) ────────────────────────────────────────────────
+function TrendingPage({ dark, tweets, tweetsLoading, tweetsLoaded, loadTweets }) {
+  const t = useTheme(dark);
+  return (
+    <div>
+      <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${t.border}`, marginBottom: 24 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, marginBottom: 8 }}>Trending on 𝕏</h1>
+            <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>What AI Twitter is buzzing about right now — viral threads, hot takes, breaking discussions.</p>
+          </div>
+          <button onClick={loadTweets} disabled={tweetsLoading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: tweetsLoading?"transparent":t.accent, border: `1px solid ${t.accent}`, color: tweetsLoading?t.textMuted:(dark?"#080808":"#fff"), cursor: tweetsLoading?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>
+            {tweetsLoading ? "SCANNING..." : "↺ REFRESH TRENDS"}
+          </button>
+        </div>
+      </div>
+      {tweetsLoading && tweets.length === 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+          {[...Array(6)].map((_,i) => <SkeletonCard key={i} dark={dark} />)}
+        </div>
+      ) : tweets.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>
+          NO TRENDS YET — CLICK REFRESH TRENDS
+        </div>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
+          {tweets.map((item, i) => <TwitterCard key={i} item={item} idx={i} dark={dark} />)}
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const medals = ["🥇", "🥈", "🥉"];
-
+// ─── LEADERBOARD PAGE ─────────────────────────────────────────────────────────
+function LeaderboardPage({ dark, lbData, lbLoading, lbLastFetch, loadLeaderboard }) {
+  const t = useTheme(dark);
+  const medals = ["🥇","🥈","🥉"];
   return (
     <div>
       <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${t.border}`, marginBottom: 24 }}>
@@ -285,26 +493,21 @@ function LeaderboardPage({ dark }) {
         <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>Live rankings from AI agents scanning benchmarks, reviews, and real-world usage.</p>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        {lastFetch && <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>LAST SCANNED: {lastFetch}</span>}
-        <button onClick={load} disabled={loading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: loading ? "transparent" : t.accent, border: `1px solid ${t.accent}`, color: loading ? t.textMuted : (dark ? "#080808" : "#fff"), cursor: loading ? "not-allowed" : "pointer", borderRadius: 2, fontWeight: 700 }}>
-          {loading ? "SCANNING..." : "↺ REFRESH RANKINGS"}
+        {lbLastFetch && <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>LAST SCANNED: {lbLastFetch}</span>}
+        <button onClick={loadLeaderboard} disabled={lbLoading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: lbLoading?"transparent":t.accent, border: `1px solid ${t.accent}`, color: lbLoading?t.textMuted:(dark?"#080808":"#fff"), cursor: lbLoading?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>
+          {lbLoading?"SCANNING...":"↺ REFRESH RANKINGS"}
         </button>
       </div>
-      {loading && Object.keys(data).length === 0 ? (
+      {lbLoading && Object.keys(lbData).length === 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
-          {LEADERBOARD_FIELDS.map((_, i) => (
-            <div key={i} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, padding: 20, height: 160, position: "relative", overflow: "hidden" }}>
-              <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg,transparent,${t.accentDim},transparent)`, animation: "scan 1.5s infinite" }} />
-              {[40, 90, 85, 80].map((w, j) => <div key={j} style={{ height: 11, background: dark ? "#1a1a1a" : "#eeeeea", borderRadius: 2, width: `${w}%`, marginBottom: 10 }} />)}
-            </div>
-          ))}
+          {LEADERBOARD_FIELDS.map((_,i) => <SkeletonCard key={i} dark={dark} height={160} />)}
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
           {LEADERBOARD_FIELDS.map((field, fi) => (
-            <div key={field} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, padding: 20, opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${fi * 0.07}s` }}>
+            <div key={field} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, padding: 20, opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${fi*0.07}s` }}>
               <div style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, color: t.accent, marginBottom: 14 }}>{field.toUpperCase()}</div>
-              {data[field] ? data[field].slice(0, 3).map((item, i) => (
+              {lbData[field] ? lbData[field].slice(0,3).map((item,i) => (
                 <div key={i} style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "flex-start" }}>
                   <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{medals[i]}</span>
                   <div>
@@ -321,11 +524,12 @@ function LeaderboardPage({ dark }) {
   );
 }
 
+// ─── SUBMIT PAGE ──────────────────────────────────────────────────────────────
 function SubmitPage({ dark }) {
   const t = useTheme(dark);
-  const [form, setForm] = useState({ name: "", email: "", category: "models", tip: "", source: "" });
+  const [form, setForm] = useState({ name:"", email:"", category:"models", tip:"", source:"" });
   const [submitted, setSubmitted] = useState(false);
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+  const set = (k,v) => setForm(prev => ({...prev,[k]:v}));
   return (
     <div>
       <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${t.border}`, marginBottom: 28 }}>
@@ -336,11 +540,11 @@ function SubmitPage({ dark }) {
         <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3, padding: 32, textAlign: "center", maxWidth: 480 }}>
           <div style={{ fontFamily: "monospace", fontSize: 13, color: "#22c55e", letterSpacing: 2, marginBottom: 8 }}>✓ SIGNAL RECEIVED</div>
           <p style={{ fontSize: 13, color: t.textMid, marginBottom: 16 }}>Our agents will review your tip. If it checks out, it goes live in the next brief.</p>
-          <button onClick={() => { setSubmitted(false); setForm({ name: "", email: "", category: "models", tip: "", source: "" }); }} style={{ fontFamily: "monospace", fontSize: 10, padding: "8px 16px", background: "transparent", border: `1px solid ${t.border}`, color: t.textMuted, cursor: "pointer", borderRadius: 2 }}>SUBMIT ANOTHER</button>
+          <button onClick={() => { setSubmitted(false); setForm({name:"",email:"",category:"models",tip:"",source:""}); }} style={{ fontFamily: "monospace", fontSize: 10, padding: "8px 16px", background: "transparent", border: `1px solid ${t.border}`, color: t.textMuted, cursor: "pointer", borderRadius: 2 }}>SUBMIT ANOTHER</button>
         </div>
       ) : (
         <div style={{ maxWidth: 540 }}>
-          {[{ label: "YOUR NAME (optional)", key: "name", type: "text", ph: "Anonymous is fine" }, { label: "EMAIL (optional)", key: "email", type: "email", ph: "Only if you want credit" }, { label: "SOURCE / LINK", key: "source", type: "text", ph: "URL or publication name" }].map(f => (
+          {[{label:"YOUR NAME (optional)",key:"name",type:"text",ph:"Anonymous is fine"},{label:"EMAIL (optional)",key:"email",type:"email",ph:"Only if you want credit"},{label:"SOURCE / LINK",key:"source",type:"text",ph:"URL or publication name"}].map(f => (
             <div key={f.key} style={{ marginBottom: 16 }}>
               <label style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.textMuted, display: "block", marginBottom: 6 }}>{f.label}</label>
               <input type={f.type} value={form[f.key]} onChange={e => set(f.key, e.target.value)} placeholder={f.ph} style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: "9px 12px", background: t.surface, border: `1px solid ${t.border}`, color: t.text, borderRadius: 2, outline: "none" }} />
@@ -356,7 +560,7 @@ function SubmitPage({ dark }) {
             <label style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.textMuted, display: "block", marginBottom: 6 }}>THE SIGNAL *</label>
             <textarea value={form.tip} onChange={e => set("tip", e.target.value)} placeholder="What did you spot? Be specific — who, what, why it matters." rows={5} style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: "9px 12px", background: t.surface, border: `1px solid ${t.border}`, color: t.text, borderRadius: 2, outline: "none", resize: "vertical", lineHeight: 1.6 }} />
           </div>
-          <button onClick={() => form.tip.length > 10 && setSubmitted(true)} style={{ fontFamily: "monospace", fontSize: 11, letterSpacing: 2, padding: "11px 24px", background: form.tip.length > 10 ? t.accent : "transparent", border: `1px solid ${form.tip.length > 10 ? t.accent : t.border}`, color: form.tip.length > 10 ? (dark ? "#080808" : "#fff") : t.textMuted, cursor: form.tip.length > 10 ? "pointer" : "not-allowed", borderRadius: 2, fontWeight: 700 }}>SUBMIT SIGNAL →</button>
+          <button onClick={() => form.tip.length>10 && setSubmitted(true)} style={{ fontFamily: "monospace", fontSize: 11, letterSpacing: 2, padding: "11px 24px", background: form.tip.length>10?t.accent:"transparent", border: `1px solid ${form.tip.length>10?t.accent:t.border}`, color: form.tip.length>10?(dark?"#080808":"#fff"):t.textMuted, cursor: form.tip.length>10?"pointer":"not-allowed", borderRadius: 2, fontWeight: 700 }}>SUBMIT SIGNAL →</button>
         </div>
       )}
     </div>
@@ -367,10 +571,10 @@ function AboutPage({ dark }) {
   const t = useTheme(dark);
   const sections = [
     { title: "What is WOAI?", body: "WOAI (World of AI) is an AI-native intelligence platform monitoring the global AI landscape in real time. Specialist agents scan hundreds of sources simultaneously — no editors, no agendas, no hype filtering." },
-    { title: "How does it work?", body: "Six specialist AI agents run in parallel, each focused on a specific vertical: model releases, funding, research, tools, geopolitics, and bio+AI. They search the web, extract signals, assess urgency, and surface what actually matters." },
+    { title: "How does it work?", body: "Specialist AI agents run in parallel across news feeds, YouTube, Reddit, and Twitter/X — each focused on a specific vertical. They search the web, extract signals, assess urgency, and surface what actually matters." },
     { title: "Why no hype?", body: "99% of AI news coverage is PR-driven cheerleading or panic. We built WOAI because serious builders, investors, and thinkers needed a feed that treats them like adults." },
     { title: "Who is this for?", body: "AI founders, investors, researchers, CTOs, and anyone who needs to stay genuinely informed without spending 3 hours a day reading newsletters." },
-    { title: "This is Beta", body: "WOAI is in private beta. We're sharing with a small trusted group first. If you have feedback — what's missing, what's wrong, what you'd pay for — the Submit Tip page is your direct line to us." },
+    { title: "This is Beta", body: "WOAI is in private beta. Sharing with a small trusted group first. If you have feedback — what's missing, what's wrong, what you'd pay for — Submit Tip is your direct line to us." },
   ];
   return (
     <div style={{ maxWidth: 620 }}>
@@ -379,8 +583,8 @@ function AboutPage({ dark }) {
         <h1 style={{ fontFamily: "Georgia, serif", fontSize: 32, fontWeight: 400, color: t.text, marginBottom: 10, lineHeight: 1.25 }}>No hype.<br />No agenda.<br />Just signal.</h1>
         <p style={{ fontSize: 14, color: t.textMid, lineHeight: 1.7 }}>The Reuters of AI — built by people who actually think about this stuff.</p>
       </div>
-      {sections.map((s, i) => (
-        <div key={i} style={{ marginBottom: 28, paddingBottom: 28, borderBottom: i < sections.length - 1 ? `1px solid ${t.border}` : "none" }}>
+      {sections.map((s,i) => (
+        <div key={i} style={{ marginBottom: 28, paddingBottom: 28, borderBottom: i<sections.length-1?`1px solid ${t.border}`:"none" }}>
           <h2 style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, color: t.accent, marginBottom: 10 }}>{s.title.toUpperCase()}</h2>
           <p style={{ fontSize: 14, color: t.textMid, lineHeight: 1.8 }}>{s.body}</p>
         </div>
@@ -393,14 +597,38 @@ function AboutPage({ dark }) {
   );
 }
 
+// ─── ROOT ─────────────────────────────────────────────────────────────────────
 export default function WOAI() {
   const [page, setPage] = useState("FEED");
   const [dark, setDark] = useState(false);
   const t = useTheme(dark);
+
+  // Feed state
   const [news, setNews] = useState([]);
   const [agentStatuses, setAgentStatuses] = useState({});
   const [lastUpdated, setLastUpdated] = useState(null);
   const [running, setRunning] = useState(false);
+
+  // Leaderboard state
+  const [lbData, setLbData] = useState({});
+  const [lbLoading, setLbLoading] = useState(false);
+  const [lbLastFetch, setLbLastFetch] = useState(null);
+  const [lbLoaded, setLbLoaded] = useState(false);
+
+  // YouTube state
+  const [videos, setVideos] = useState([]);
+  const [videosLoading, setVideosLoading] = useState(false);
+  const [videosLoaded, setVideosLoaded] = useState(false);
+
+  // Reddit state
+  const [posts, setPosts] = useState([]);
+  const [postsLoading, setPostsLoading] = useState(false);
+  const [postsLoaded, setPostsLoaded] = useState(false);
+
+  // Twitter state
+  const [tweets, setTweets] = useState([]);
+  const [tweetsLoading, setTweetsLoading] = useState(false);
+  const [tweetsLoaded, setTweetsLoaded] = useState(false);
 
   const runAgents = useCallback(async () => {
     setRunning(true); setNews([]); setAgentStatuses({});
@@ -419,7 +647,56 @@ export default function WOAI() {
     setRunning(false);
   }, []);
 
+  const loadLeaderboard = useCallback(async () => {
+    setLbLoading(true);
+    try {
+      const raw = await apiCall("leaderboard", "");
+      const parsed = parseJSON(raw, "{");
+      if (parsed) { setLbData(parsed); setLbLastFetch(new Date().toLocaleTimeString()); setLbLoaded(true); }
+    } catch (_) {}
+    setLbLoading(false);
+  }, []);
+
+  const loadVideos = useCallback(async () => {
+    setVideosLoading(true);
+    try {
+      const raw = await youtubeCall();
+      const parsed = parseJSON(raw, "[");
+      if (parsed && Array.isArray(parsed)) { setVideos(parsed); setVideosLoaded(true); }
+    } catch (_) {}
+    setVideosLoading(false);
+  }, []);
+
+  const loadPosts = useCallback(async () => {
+    setPostsLoading(true);
+    try {
+      const raw = await redditCall();
+      const parsed = parseJSON(raw, "[");
+      if (parsed && Array.isArray(parsed)) { setPosts(parsed); setPostsLoaded(true); }
+    } catch (_) {}
+    setPostsLoading(false);
+  }, []);
+
+  const loadTweets = useCallback(async () => {
+    setTweetsLoading(true);
+    try {
+      const raw = await twitterCall();
+      const parsed = parseJSON(raw, "[");
+      if (parsed && Array.isArray(parsed)) { setTweets(parsed); setTweetsLoaded(true); }
+    } catch (_) {}
+    setTweetsLoading(false);
+  }, []);
+
+  // Load on startup
   useEffect(() => { runAgents(); }, []);
+  useEffect(() => { if (!lbLoaded) loadLeaderboard(); }, [lbLoaded]);
+
+  // Load section data when first visited
+  useEffect(() => {
+    if (page === "VIDEOS" && !videosLoaded && !videosLoading) loadVideos();
+    if (page === "COMMUNITY" && !postsLoaded && !postsLoading) loadPosts();
+    if (page === "TRENDING" && !tweetsLoaded && !tweetsLoading) loadTweets();
+  }, [page]);
 
   return (
     <div style={{ background: t.bg, minHeight: "100vh", color: t.text, fontFamily: "system-ui, sans-serif" }}>
@@ -429,38 +706,42 @@ export default function WOAI() {
         @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.25} }
         @keyframes scan   { 0%{transform:translateX(-100%)} 100%{transform:translateX(500%)} }
         input::placeholder, textarea::placeholder { color: ${t.textFaint}; }
+        a { color: inherit; }
       `}</style>
 
-      <nav style={{ borderBottom: `1px solid ${t.border}`, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", background: t.bg, position: "sticky", top: 0, zIndex: 100 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 32, height: 54 }}>
-          <div onClick={() => setPage("FEED")} style={{ cursor: "pointer", display: "flex", alignItems: "baseline", gap: 8 }}>
-            <span style={{ fontFamily: "monospace", fontSize: 18, fontWeight: 700, letterSpacing: 5, color: t.accent }}>WOAI</span>
-            <span style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.textMuted }}>WORLD OF AI</span>
+      <nav style={{ borderBottom: `1px solid ${t.border}`, padding: "0 16px", display: "flex", alignItems: "center", justifyContent: "space-between", background: t.bg, position: "sticky", top: 0, zIndex: 100, flexWrap: "wrap", gap: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 0, height: 54, flexWrap: "wrap" }}>
+          <div onClick={() => setPage("FEED")} style={{ cursor: "pointer", display: "flex", alignItems: "baseline", gap: 6, marginRight: 20 }}>
+            <span style={{ fontFamily: "monospace", fontSize: 16, fontWeight: 700, letterSpacing: 4, color: t.accent }}>WOAI</span>
+            <span style={{ fontFamily: "monospace", fontSize: 8, letterSpacing: 2, color: t.textMuted }}>WORLD OF AI</span>
           </div>
-          <div style={{ display: "flex" }}>
+          <div style={{ display: "flex", flexWrap: "wrap" }}>
             {NAV.map(n => (
-              <button key={n} onClick={() => setPage(n)} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "0 14px", height: 54, background: "transparent", border: "none", borderBottom: page === n ? `2px solid ${t.accent}` : "2px solid transparent", color: page === n ? t.accent : t.textMuted, cursor: "pointer", fontWeight: page === n ? 700 : 400 }}>{n}</button>
+              <button key={n} onClick={() => setPage(n)} style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 1.5, padding: "0 10px", height: 54, background: "transparent", border: "none", borderBottom: page===n?`2px solid ${t.accent}`:"2px solid transparent", color: page===n?t.accent:t.textMuted, cursor: "pointer", fontWeight: page===n?700:400 }}>{n}</button>
             ))}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 5, height: 5, borderRadius: "50%", background: running ? t.accent : "#22c55e", animation: "pulse 2s infinite" }} />
-            <span style={{ fontFamily: "monospace", fontSize: 9, color: running ? t.accent : "#22c55e", letterSpacing: 2 }}>{running ? "SCANNING" : "LIVE"}</span>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: running?t.accent:"#22c55e", animation: "pulse 2s infinite" }} />
+            <span style={{ fontFamily: "monospace", fontSize: 9, color: running?t.accent:"#22c55e", letterSpacing: 2 }}>{running?"SCANNING":"LIVE"}</span>
           </div>
           <div style={{ width: 1, height: 18, background: t.border }} />
-          <button onClick={() => setDark(d => !d)} style={{ fontFamily: "monospace", fontSize: 11, padding: "6px 12px", background: dark ? "#1c1c1c" : "#ededea", border: `1px solid ${t.border}`, color: t.text, cursor: "pointer", borderRadius: 2 }}>{dark ? "☀" : "☾"}</button>
+          <button onClick={() => setDark(d => !d)} style={{ fontFamily: "monospace", fontSize: 11, padding: "6px 12px", background: dark?"#1c1c1c":"#ededea", border: `1px solid ${t.border}`, color: t.text, cursor: "pointer", borderRadius: 2 }}>{dark?"☀":"☾"}</button>
         </div>
       </nav>
 
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "0 28px" }}>
+      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "0 24px" }}>
         {page === "FEED"        && <FeedPage dark={dark} news={news} agentStatuses={agentStatuses} lastUpdated={lastUpdated} running={running} runAgents={runAgents} />}
-        {page === "LEADERBOARD" && <LeaderboardPage dark={dark} />}
+        {page === "VIDEOS"      && <VideosPage dark={dark} videos={videos} videosLoading={videosLoading} videosLoaded={videosLoaded} loadVideos={loadVideos} />}
+        {page === "COMMUNITY"   && <CommunityPage dark={dark} posts={posts} postsLoading={postsLoading} postsLoaded={postsLoaded} loadPosts={loadPosts} />}
+        {page === "TRENDING"    && <TrendingPage dark={dark} tweets={tweets} tweetsLoading={tweetsLoading} tweetsLoaded={tweetsLoaded} loadTweets={loadTweets} />}
+        {page === "LEADERBOARD" && <LeaderboardPage dark={dark} lbData={lbData} lbLoading={lbLoading} lbLastFetch={lbLastFetch} loadLeaderboard={loadLeaderboard} />}
         {page === "SUBMIT TIP"  && <SubmitPage dark={dark} />}
         {page === "ABOUT"       && <AboutPage dark={dark} />}
       </main>
 
-      <footer style={{ borderTop: `1px solid ${t.border}`, margin: "40px 28px 0", padding: "20px 0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+      <footer style={{ borderTop: `1px solid ${t.border}`, margin: "40px 24px 0", padding: "20px 0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 3, color: t.accent }}>WOAI — WORLD OF AI</span>
         <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>PRIVATE BETA — NOT FOR REDISTRIBUTION</span>
         <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textFaint }}>{new Date().getFullYear()}</span>
