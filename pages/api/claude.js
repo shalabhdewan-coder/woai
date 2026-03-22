@@ -8,76 +8,47 @@ export default async function handler(req, res) {
   try {
     const { agentId, agentFocus } = req.body;
 
-    // ── LEADERBOARD: just ask Claude directly, no Tavily needed ──
+    // LEADERBOARD — straight to Claude, no Tavily
     if (agentId === "leaderboard") {
-      const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": anthropicKey,
-          "anthropic-version": "2023-06-01",
-        },
+        headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 2000,
-          messages: [{
-            role: "user",
-            content: `List the best AI tools right now for: Coding, Writing, Image Gen, Research, Video, Voice, Data Analysis, Agents.
-For each give top 3 tools with a one-line reason why.
-Return ONLY this raw JSON, nothing else, no markdown:
-{"Coding":[{"name":"X","reason":"..."},{"name":"Y","reason":"..."},{"name":"Z","reason":"..."}],"Writing":[...],"Image Gen":[...],"Research":[...],"Video":[...],"Voice":[...],"Data Analysis":[...],"Agents":[...]}`,
-          }],
+          messages: [{ role: "user", content: `Give me the best AI tools right now for: Coding, Writing, Image Gen, Research, Video, Voice, Data Analysis, Agents. Top 3 per category with one-line reason. Return ONLY raw JSON like this with no extra text: {"Coding":[{"name":"X","reason":"why"}],"Writing":[{"name":"X","reason":"why"}],"Image Gen":[{"name":"X","reason":"why"}],"Research":[{"name":"X","reason":"why"}],"Video":[{"name":"X","reason":"why"}],"Voice":[{"name":"X","reason":"why"}],"Data Analysis":[{"name":"X","reason":"why"}],"Agents":[{"name":"X","reason":"why"}]}` }],
         }),
       });
-      const data = await claudeRes.json();
-      const text = data.content?.[0]?.text || "{}";
-      return res.status(200).json({ text });
+      const d = await r.json();
+      return res.status(200).json({ text: d.content?.[0]?.text || "{}" });
     }
 
-    // ── NEWS AGENTS: Tavily search + Claude analysis ──
+    // NEWS AGENTS — Tavily search + Claude analysis
     let articles = "";
-    if (tavilyKey && agentFocus) {
+    if (tavilyKey) {
       try {
-        const tavilyRes = await fetch("https://api.tavily.com/search", {
+        const t = await fetch("https://api.tavily.com/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            api_key: tavilyKey,
-            query: `${agentFocus} news March 2026`,
-            search_depth: "basic",
-            max_results: 6,
-          }),
+          body: JSON.stringify({ api_key: tavilyKey, query: `${agentFocus} news March 2026`, search_depth: "basic", max_results: 6 }),
         });
-        const tavilyData = await tavilyRes.json();
-        if (tavilyData.results?.length > 0) {
-          articles = tavilyData.results
-            .map((r, i) => `[${i + 1}] ${r.title} | ${r.content?.slice(0, 200)} | SOURCE: ${r.url}`)
-            .join("\n");
+        const td = await t.json();
+        if (td.results?.length > 0) {
+          articles = td.results.map((r, i) => `[${i+1}] TITLE: ${r.title} | SUMMARY: ${r.content?.slice(0, 250)}`).join("\n\n");
         }
       } catch (_) {}
     }
 
-    const prompt = articles
-      ? `You are an AI news analyst. Based on these real articles:\n\n${articles}\n\nExtract exactly 3 news signals. Return ONLY this JSON array, nothing else:\n[{"title":"...","summary":"one sentence","category":"${agentId}","urgency":"high","source":"publication name","signal":"WATCH insight here"}]`
-      : `You are an AI news analyst. List 3 recent AI news items about: ${agentFocus}. Return ONLY this JSON array:\n[{"title":"...","summary":"one sentence","category":"${agentId}","urgency":"high","source":"publication name","signal":"WATCH insight here"}]`;
+    const prompt = `You are an AI news analyst. ${articles ? `Based on these real articles:\n\n${articles}\n\n` : ""}Return ONLY a JSON array of exactly 3 news items, nothing else before or after the array:
+[{"title":"headline","summary":"one sentence summary","category":"${agentId}","urgency":"high","source":"Source Name","signal":"WATCH key insight"}]`;
 
-    const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": anthropicKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1000,
-        messages: [{ role: "user", content: prompt }],
-      }),
+      headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
     });
-
-    const data = await claudeRes.json();
-    const text = data.content?.[0]?.text || "[]";
-    return res.status(200).json({ text });
+    const d = await r.json();
+    return res.status(200).json({ text: d.content?.[0]?.text || "[]" });
 
   } catch (err) {
     return res.status(500).json({ error: err.message });
