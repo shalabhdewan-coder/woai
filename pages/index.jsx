@@ -1,9 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 
-// ─── CONSTANTS ────────────────────────────────────────────────────────────────
-
-const BRAND = { name: "WOAI", full: "World of AI", tagline: "Unfiltered AI Intelligence. No hype. No agenda." };
-
 const NAV = ["FEED", "LEADERBOARD", "SUBMIT TIP", "ABOUT"];
 
 const CATEGORIES = [
@@ -45,8 +41,6 @@ const CAT_LIGHT = {
   biotech:     { bg: "#f0fdf4", border: "#059669", text: "#047857" },
 };
 
-// ─── THEME HELPER ─────────────────────────────────────────────────────────────
-
 function useTheme(dark) {
   return {
     bg:         dark ? "#080808" : "#f8f8f5",
@@ -63,8 +57,6 @@ function useTheme(dark) {
     cats:       dark ? CAT_DARK : CAT_LIGHT,
   };
 }
-
-// ─── CLAUDE API CALL ──────────────────────────────────────────────────────────
 
 async function callClaude(prompt, maxTokens = 2000) {
   const res = await fetch("/api/claude", {
@@ -83,7 +75,13 @@ async function callClaude(prompt, maxTokens = 2000) {
   return text;
 }
 
-// ─── SMALL COMPONENTS ─────────────────────────────────────────────────────────
+function parseJSON(raw, bracket = "[") {
+  const cleaned = raw.replace(/```json|```/g, "").trim();
+  const open  = bracket === "[" ? cleaned.indexOf("[")  : cleaned.indexOf("{");
+  const close = bracket === "[" ? cleaned.lastIndexOf("]") : cleaned.lastIndexOf("}");
+  if (open === -1 || close === -1) return null;
+  try { return JSON.parse(cleaned.substring(open, close + 1)); } catch { return null; }
+}
 
 function Badge({ label, cat }) {
   return (
@@ -95,15 +93,11 @@ function Badge({ label, cat }) {
   );
 }
 
-function Spinner({ accent }) {
-  return <span style={{ fontFamily: "monospace", fontSize: 11, color: accent, animation: "pulse 1s infinite" }}>●</span>;
-}
-
-function AgentStatus({ agent, status, dark, accent }) {
+function AgentStatus({ agent, status, dark }) {
   const t = useTheme(dark);
-  const col = status === "done" ? "#22c55e" : status === "scanning" ? accent : t.textFaint;
+  const col = status === "done" ? "#22c55e" : status === "scanning" ? t.accent : t.textFaint;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3, marginBottom: 6 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 12px", background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3 }}>
       <span style={{ color: col, fontSize: 9, animation: status === "scanning" ? "pulse 1s infinite" : "none" }}>
         {status === "done" ? "✓" : status === "scanning" ? "●" : "○"}
       </span>
@@ -115,26 +109,22 @@ function AgentStatus({ agent, status, dark, accent }) {
   );
 }
 
-// ─── NEWS CARD ────────────────────────────────────────────────────────────────
-
 function NewsCard({ item, idx, dark }) {
   const t = useTheme(dark);
   const cat = t.cats[item.category] || t.cats.tools;
   const [voted, setVoted] = useState(null);
   const [copied, setCopied] = useState(false);
-
   const share = () => {
-    navigator.clipboard?.writeText(`${item.title} — via WOAI (World of AI)`);
+    navigator.clipboard?.writeText(`${item.title} — via WOAI (woai.vercel.app)`);
     setCopied(true); setTimeout(() => setCopied(false), 2000);
   };
-
   return (
     <div style={{
       background: t.surface, border: `1px solid ${t.border}`,
       borderLeft: `3px solid ${cat.border}`, borderRadius: 3,
       padding: "16px 18px", opacity: 0,
       animation: "fadeUp 0.4s ease forwards", animationDelay: `${idx * 0.05}s`,
-      display: "flex", flexDirection: "column", gap: 0,
+      display: "flex", flexDirection: "column",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8, gap: 8 }}>
         <Badge label={item.category} cat={cat} />
@@ -151,40 +141,31 @@ function NewsCard({ item, idx, dark }) {
           ► {item.signal}
         </div>
       )}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "auto" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>{item.source}</span>
-        <div style={{ display: "flex", gap: 6 }}>
-          <button onClick={() => setVoted(v => v === "up" ? null : "up")} style={{
-            fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer",
-            background: voted === "up" ? "#22c55e22" : "transparent",
-            border: `1px solid ${voted === "up" ? "#22c55e" : t.borderMid}`,
-            color: voted === "up" ? "#22c55e" : t.textMuted,
-          }}>👍</button>
-          <button onClick={() => setVoted(v => v === "dn" ? null : "dn")} style={{
-            fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer",
-            background: voted === "dn" ? "#f8717122" : "transparent",
-            border: `1px solid ${voted === "dn" ? "#f87171" : t.borderMid}`,
-            color: voted === "dn" ? "#f87171" : t.textMuted,
-          }}>👎</button>
+        <div style={{ display: "flex", gap: 5 }}>
+          {["up","dn"].map(v => (
+            <button key={v} onClick={() => setVoted(p => p === v ? null : v)} style={{
+              fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer",
+              background: voted === v ? (v==="up" ? "#22c55e22" : "#f8717122") : "transparent",
+              border: `1px solid ${voted === v ? (v==="up" ? "#22c55e" : "#f87171") : t.borderMid}`,
+              color: voted === v ? (v==="up" ? "#22c55e" : "#f87171") : t.textMuted,
+            }}>{v === "up" ? "👍" : "👎"}</button>
+          ))}
           <button onClick={share} style={{
             fontFamily: "monospace", fontSize: 10, padding: "3px 8px", borderRadius: 2, cursor: "pointer",
-            background: "transparent", border: `1px solid ${t.borderMid}`, color: t.textMuted,
-          }}>{copied ? "✓ COPIED" : "SHARE"}</button>
+            background: "transparent", border: `1px solid ${t.borderMid}`, color: copied ? "#22c55e" : t.textMuted,
+          }}>{copied ? "✓" : "SHARE"}</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── PAGE: FEED ───────────────────────────────────────────────────────────────
-
-function FeedPage({ dark }) {
+// ─── FEED PAGE — receives state as props, never resets ─────────────────────
+function FeedPage({ dark, news, agentStatuses, lastUpdated, running, runAgents }) {
   const t = useTheme(dark);
-  const [news, setNews] = useState([]);
   const [activeTab, setActiveTab] = useState("all");
-  const [agentStatuses, setAgentStatuses] = useState({});
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [running, setRunning] = useState(false);
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
 
@@ -194,40 +175,12 @@ function FeedPage({ dark }) {
     sources: new Set(news.map(n => n.source)).size,
   };
 
-  const runAgents = useCallback(async () => {
-    setRunning(true); setNews([]); setAgentStatuses({});
-    const allNews = [];
-
-    for (const agent of AGENTS) {
-      setAgentStatuses(prev => ({ ...prev, [agent.id]: "scanning" }));
-      const prompt = `You are a specialist AI intelligence agent focused on: ${agent.focus}.
-Search the web for the latest news and developments from the past 72 hours in this specific area.
-Return ONLY a raw JSON array of exactly 3 news items. No markdown, no explanation.
-Each item must have: title (string), summary (2 sentences), category (use exactly: ${agent.id}), urgency (high/medium/low), source (publication name), signal (3-6 word tactical insight, start with a verb like WATCH/BUY/TRACK/FLAG).`;
-      try {
-        const raw = await callClaude(prompt, 1500);
-        const parsed = parseJSON(raw, "[");
-        if (parsed && Array.isArray(parsed)) {
-          allNews.push(...parsed.map(item => ({ ...item, category: agent.id })));
-        }
-      } catch (_) {}
-      setAgentStatuses(prev => ({ ...prev, [agent.id]: "done" }));
-    }
-
-    setNews(allNews);
-    setLastUpdated(new Date().toLocaleTimeString());
-    setRunning(false);
-  }, []);
-
-  useEffect(() => { runAgents(); }, []);
-
   const filtered = activeTab === "all" ? news : news.filter(n => n.category === activeTab);
 
   return (
     <div>
-      {/* Hero */}
       <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${t.border}`, marginBottom: 20 }}>
-        <div style={{ fontFamily: "Georgia, serif", fontSize: 13, color: t.textMuted, letterSpacing: 1, marginBottom: 6 }}>
+        <div style={{ fontFamily: "Georgia, serif", fontSize: 12, color: t.textMuted, letterSpacing: 1, marginBottom: 6 }}>
           {new Date().toLocaleDateString("en-GB", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).toUpperCase()}
         </div>
         <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, lineHeight: 1.25, marginBottom: 8, maxWidth: 560 }}>
@@ -238,42 +191,33 @@ Each item must have: title (string), summary (2 sentences), category (use exactl
         </p>
       </div>
 
-      {/* Stats + refresh */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", gap: 28, flexWrap: "wrap" }}>
-          {[{ l: "SIGNALS", v: stats.total || "—" }, { l: "HIGH URGENCY", v: stats.high || "—" }, { l: "SOURCES", v: stats.sources || "—" }].map(s => (
+        <div style={{ display: "flex", gap: 28, flexWrap: "wrap", alignItems: "flex-end" }}>
+          {[{l:"SIGNALS",v:stats.total||"—"},{l:"HIGH URGENCY",v:stats.high||"—"},{l:"SOURCES",v:stats.sources||"—"}].map(s => (
             <div key={s.l}>
               <div style={{ fontFamily: "monospace", fontSize: 18, fontWeight: 700, color: t.accent }}>{s.v}</div>
               <div style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted, letterSpacing: 2 }}>{s.l}</div>
             </div>
           ))}
-          {lastUpdated && <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
-            <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textFaint }}>UPDATED {lastUpdated}</span>
-          </div>}
+          {lastUpdated && <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textFaint }}>UPDATED {lastUpdated}</span>}
         </div>
         <button onClick={runAgents} disabled={running} style={{
           fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px",
-          background: running ? "transparent" : t.accent,
-          border: `1px solid ${t.accent}`,
+          background: running ? "transparent" : t.accent, border: `1px solid ${t.accent}`,
           color: running ? t.textMuted : (dark ? "#080808" : "#fff"),
           cursor: running ? "not-allowed" : "pointer", borderRadius: 2, fontWeight: 700,
         }}>{running ? "AGENTS RUNNING..." : "↺ RUN ALL AGENTS"}</button>
       </div>
 
-      {/* Agent status panel */}
       {(running || Object.keys(agentStatuses).length > 0) && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 6, marginBottom: 20, padding: "14px", background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3 }}>
-          <div style={{ gridColumn: "1/-1", fontFamily: "monospace", fontSize: 9, letterSpacing: 3, color: t.accent, marginBottom: 6 }}>AGENT STATUS BOARD</div>
-          {AGENTS.map(agent => (
-            <AgentStatus key={agent.id} agent={agent} status={agentStatuses[agent.id] || "queued"} dark={dark} accent={t.accent} />
-          ))}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 6, marginBottom: 20, padding: 14, background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3 }}>
+          <div style={{ gridColumn: "1/-1", fontFamily: "monospace", fontSize: 9, letterSpacing: 3, color: t.accent, marginBottom: 4 }}>AGENT STATUS BOARD</div>
+          {AGENTS.map(agent => <AgentStatus key={agent.id} agent={agent} status={agentStatuses[agent.id] || "queued"} dark={dark} />)}
         </div>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 260px", gap: 24 }}>
-        {/* Main */}
         <div>
-          {/* Category tabs */}
           <div style={{ display: "flex", gap: 4, marginBottom: 16, flexWrap: "wrap" }}>
             {CATEGORIES.map(cat => (
               <button key={cat.id} onClick={() => setActiveTab(cat.id)} style={{
@@ -286,22 +230,17 @@ Each item must have: title (string), summary (2 sentences), category (use exactl
             ))}
           </div>
 
-          {/* Cards */}
           {running && news.length === 0 ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
               {[...Array(6)].map((_, i) => (
                 <div key={i} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, padding: 18, height: 180, position: "relative", overflow: "hidden" }}>
                   <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg,transparent,${t.accentDim},transparent)`, animation: "scan 1.5s infinite" }} />
-                  {[35, 100, 85, 70, 45].map((w, j) => (
-                    <div key={j} style={{ height: j === 0 ? 8 : j >= 3 ? 8 : 13, background: dark ? "#1a1a1a" : "#eeeeea", borderRadius: 2, width: `${w}%`, marginBottom: 10 }} />
-                  ))}
+                  {[35,100,85,70,45].map((w,j) => <div key={j} style={{ height: j===0||j===4?8:13, background: dark?"#1a1a1a":"#eeeeea", borderRadius: 2, width:`${w}%`, marginBottom:10 }} />)}
                 </div>
               ))}
             </div>
-          ) : filtered.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>
-              NO SIGNALS YET — AGENTS WORKING
-            </div>
+          ) : filtered.length === 0 && !running ? (
+            <div style={{ textAlign: "center", padding: "60px 0", fontFamily: "monospace", color: t.textMuted, letterSpacing: 2 }}>NO SIGNALS YET — CLICK RUN ALL AGENTS</div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 10 }}>
               {filtered.map((item, i) => <NewsCard key={i} item={item} idx={i} dark={dark} />)}
@@ -309,45 +248,31 @@ Each item must have: title (string), summary (2 sentences), category (use exactl
           )}
         </div>
 
-        {/* Sidebar */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Newsletter */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3, padding: 16 }}>
             <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 3, color: t.accent, marginBottom: 8 }}>BETA — STAY IN THE LOOP</div>
             <p style={{ fontSize: 12, color: t.textMid, marginBottom: 12, lineHeight: 1.6 }}>Get the daily AI brief. No noise, just signals.</p>
             {subscribed ? (
-              <div style={{ fontFamily: "monospace", fontSize: 11, color: "#22c55e" }}>✓ YOU'RE IN. BRIEF COMING SOON.</div>
+              <div style={{ fontFamily: "monospace", fontSize: 11, color: "#22c55e" }}>✓ YOU'RE IN.</div>
             ) : (
               <div style={{ display: "flex", gap: 6 }}>
-                <input value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" style={{
-                  flex: 1, fontFamily: "monospace", fontSize: 11, padding: "7px 10px",
-                  background: t.surface, border: `1px solid ${t.border}`, color: t.text,
-                  borderRadius: 2, outline: "none",
-                }} />
-                <button onClick={() => email.includes("@") && setSubscribed(true)} style={{
-                  fontFamily: "monospace", fontSize: 10, padding: "7px 12px",
-                  background: t.accent, border: "none", color: dark ? "#080808" : "#fff",
-                  cursor: "pointer", borderRadius: 2, fontWeight: 700,
-                }}>JOIN</button>
+                <input value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com" style={{ flex: 1, fontFamily: "monospace", fontSize: 11, padding: "7px 10px", background: t.surface, border: `1px solid ${t.border}`, color: t.text, borderRadius: 2, outline: "none" }} />
+                <button onClick={() => email.includes("@") && setSubscribed(true)} style={{ fontFamily: "monospace", fontSize: 10, padding: "7px 12px", background: t.accent, border: "none", color: dark ? "#080808" : "#fff", cursor: "pointer", borderRadius: 2, fontWeight: 700 }}>JOIN</button>
               </div>
             )}
           </div>
-
-          {/* Signal key */}
           <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3, padding: 16 }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 3, color: t.textMuted, marginBottom: 12 }}>SIGNAL KEY</div>
+            <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 3, color: t.textMuted, marginBottom: 10 }}>SIGNAL KEY</div>
             {Object.entries(t.cats).map(([key, val]) => (
-              <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div key={key} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 7 }}>
                 <div style={{ width: 3, height: 14, background: val.border, borderRadius: 1, flexShrink: 0 }} />
                 <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted, letterSpacing: 1 }}>{key.toUpperCase()}</span>
               </div>
             ))}
           </div>
-
-          {/* Beta feedback */}
-          <div style={{ background: t.accentDim, border: `1px solid ${t.accent}22`, borderRadius: 3, padding: 16 }}>
-            <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 3, color: t.accent, marginBottom: 8 }}>BETA FEEDBACK</div>
-            <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.6 }}>Found something missing or broken? Tell us — this is your platform.</p>
+          <div style={{ background: t.accentDim, border: `1px solid ${t.accent}33`, borderRadius: 3, padding: 14 }}>
+            <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.accent, marginBottom: 6 }}>PRIVATE BETA</div>
+            <p style={{ fontSize: 12, color: t.textMid, lineHeight: 1.6 }}>You're one of the first. Tell us what's missing, broken, or brilliant.</p>
           </div>
         </div>
       </div>
@@ -355,20 +280,18 @@ Each item must have: title (string), summary (2 sentences), category (use exactl
   );
 }
 
-// ─── PAGE: LEADERBOARD ────────────────────────────────────────────────────────
-
+// ─── LEADERBOARD PAGE ─────────────────────────────────────────────────────────
 function LeaderboardPage({ dark }) {
   const t = useTheme(dark);
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
   const [lastFetch, setLastFetch] = useState(null);
 
-  const fetch = async () => {
+  const load = async () => {
     setLoading(true);
-    const prompt = `Search the web and return the current best AI tools as of today for each of these use cases: ${LEADERBOARD_FIELDS.join(", ")}.
+    const prompt = `Search the web and return the current best AI tools as of today for: ${LEADERBOARD_FIELDS.join(", ")}.
 For each field return top 3 tools with a one-line reason why each is ranked there.
-Return ONLY raw JSON (no markdown):
-{ "Coding": [{"name":"X","reason":"..."},{"name":"Y","reason":"..."},{"name":"Z","reason":"..."}], ... }
+Return ONLY raw JSON: { "Coding": [{"name":"X","reason":"..."},{"name":"Y","reason":"..."},{"name":"Z","reason":"..."}], ... }
 Include all ${LEADERBOARD_FIELDS.length} fields.`;
     try {
       const raw = await callClaude(prompt, 2000);
@@ -378,55 +301,42 @@ Include all ${LEADERBOARD_FIELDS.length} fields.`;
     setLoading(false);
   };
 
-  useEffect(() => { fetch(); }, []);
-
-  const medals = ["🥇", "🥈", "🥉"];
+  useEffect(() => { load(); }, []);
+  const medals = ["🥇","🥈","🥉"];
 
   return (
     <div>
       <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${t.border}`, marginBottom: 24 }}>
         <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, marginBottom: 8 }}>Best AI For Every Job</h1>
-        <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>Live rankings updated by AI agents scanning reviews, benchmarks, and real-world usage. Refreshes on demand.</p>
+        <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>Live rankings from AI agents scanning benchmarks, reviews, and real-world usage.</p>
       </div>
-
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         {lastFetch && <span style={{ fontFamily: "monospace", fontSize: 10, color: t.textMuted }}>LAST SCANNED: {lastFetch}</span>}
-        <button onClick={fetch} disabled={loading} style={{
-          fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px",
-          background: loading ? "transparent" : t.accent, border: `1px solid ${t.accent}`,
-          color: loading ? t.textMuted : (dark ? "#080808" : "#fff"),
-          cursor: loading ? "not-allowed" : "pointer", borderRadius: 2, fontWeight: 700,
-        }}>{loading ? "SCANNING..." : "↺ REFRESH RANKINGS"}</button>
+        <button onClick={load} disabled={loading} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "9px 18px", background: loading ? "transparent" : t.accent, border: `1px solid ${t.accent}`, color: loading ? t.textMuted : (dark?"#080808":"#fff"), cursor: loading?"not-allowed":"pointer", borderRadius: 2, fontWeight: 700 }}>{loading ? "SCANNING..." : "↺ REFRESH RANKINGS"}</button>
       </div>
-
       {loading && Object.keys(data).length === 0 ? (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
-          {LEADERBOARD_FIELDS.map((_, i) => (
+          {LEADERBOARD_FIELDS.map((_,i) => (
             <div key={i} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, padding: 20, height: 160, position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", inset: 0, background: `linear-gradient(90deg,transparent,${t.accentDim},transparent)`, animation: "scan 1.5s infinite" }} />
-              {[40, 90, 85, 80].map((w, j) => <div key={j} style={{ height: 11, background: dark ? "#1a1a1a" : "#eeeeea", borderRadius: 2, width: `${w}%`, marginBottom: 10 }} />)}
+              {[40,90,85,80].map((w,j) => <div key={j} style={{ height: 11, background: dark?"#1a1a1a":"#eeeeea", borderRadius: 2, width:`${w}%`, marginBottom:10 }} />)}
             </div>
           ))}
         </div>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 12 }}>
           {LEADERBOARD_FIELDS.map((field, fi) => (
-            <div key={field} style={{
-              background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, padding: 20,
-              opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${fi * 0.07}s`,
-            }}>
+            <div key={field} style={{ background: t.surface, border: `1px solid ${t.border}`, borderRadius: 3, padding: 20, opacity: 0, animation: "fadeUp 0.4s ease forwards", animationDelay: `${fi*0.07}s` }}>
               <div style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, color: t.accent, marginBottom: 14 }}>{field.toUpperCase()}</div>
-              {data[field] ? data[field].slice(0, 3).map((item, i) => (
+              {data[field] ? data[field].slice(0,3).map((item,i) => (
                 <div key={i} style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "flex-start" }}>
-                  <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{medals[i]}</span>
+                  <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>{medals[i]}</span>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: t.text, marginBottom: 3 }}>{item.name}</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: t.text, marginBottom: 3 }}>{item.name}</div>
                     <div style={{ fontSize: 11, color: t.textMid, lineHeight: 1.5 }}>{item.reason}</div>
                   </div>
                 </div>
-              )) : (
-                <div style={{ fontFamily: "monospace", fontSize: 11, color: t.textFaint }}>LOADING...</div>
-              )}
+              )) : <div style={{ fontFamily: "monospace", fontSize: 11, color: t.textFaint }}>LOADING...</div>}
             </div>
           ))}
         </div>
@@ -435,192 +345,157 @@ Include all ${LEADERBOARD_FIELDS.length} fields.`;
   );
 }
 
-// ─── PAGE: SUBMIT TIP ─────────────────────────────────────────────────────────
-
+// ─── SUBMIT PAGE ──────────────────────────────────────────────────────────────
 function SubmitPage({ dark }) {
   const t = useTheme(dark);
-  const [form, setForm] = useState({ name: "", email: "", category: "models", tip: "", source: "" });
+  const [form, setForm] = useState({ name:"", email:"", category:"models", tip:"", source:"" });
   const [submitted, setSubmitted] = useState(false);
-
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
-
+  const set = (k,v) => setForm(prev => ({...prev,[k]:v}));
   return (
     <div>
       <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${t.border}`, marginBottom: 28 }}>
         <h1 style={{ fontFamily: "Georgia, serif", fontSize: 28, fontWeight: 400, color: t.text, marginBottom: 8 }}>Submit a Signal</h1>
-        <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>
-          Spotted something the agents missed? Insider knowledge? Drop it here. Good tips get featured.
-        </p>
+        <p style={{ fontSize: 13, color: t.textMid, maxWidth: 480 }}>Spotted something the agents missed? Drop it here. Good tips get featured.</p>
       </div>
-
       {submitted ? (
         <div style={{ background: t.surfaceAlt, border: `1px solid ${t.border}`, borderRadius: 3, padding: 32, textAlign: "center", maxWidth: 480 }}>
-          <div style={{ fontSize: 24, marginBottom: 12 }}>✓</div>
-          <div style={{ fontFamily: "monospace", fontSize: 13, color: "#22c55e", letterSpacing: 2, marginBottom: 8 }}>SIGNAL RECEIVED</div>
-          <p style={{ fontSize: 13, color: t.textMid }}>Our agents will review your tip. If it checks out, it goes live in the next brief.</p>
-          <button onClick={() => { setSubmitted(false); setForm({ name: "", email: "", category: "models", tip: "", source: "" }); }} style={{
-            marginTop: 16, fontFamily: "monospace", fontSize: 10, padding: "8px 16px",
-            background: "transparent", border: `1px solid ${t.border}`, color: t.textMuted,
-            cursor: "pointer", borderRadius: 2,
-          }}>SUBMIT ANOTHER</button>
+          <div style={{ fontFamily: "monospace", fontSize: 13, color: "#22c55e", letterSpacing: 2, marginBottom: 8 }}>✓ SIGNAL RECEIVED</div>
+          <p style={{ fontSize: 13, color: t.textMid, marginBottom: 16 }}>Our agents will review your tip. If it checks out, it goes live in the next brief.</p>
+          <button onClick={() => { setSubmitted(false); setForm({name:"",email:"",category:"models",tip:"",source:""}); }} style={{ fontFamily: "monospace", fontSize: 10, padding: "8px 16px", background: "transparent", border: `1px solid ${t.border}`, color: t.textMuted, cursor: "pointer", borderRadius: 2 }}>SUBMIT ANOTHER</button>
         </div>
       ) : (
         <div style={{ maxWidth: 540 }}>
-          {[
-            { label: "YOUR NAME (optional)", key: "name", type: "text", placeholder: "Anonymous is fine" },
-            { label: "EMAIL (optional)", key: "email", type: "email", placeholder: "Only if you want credit" },
-            { label: "SOURCE / LINK", key: "source", type: "text", placeholder: "URL or publication name" },
-          ].map(f => (
+          {[{label:"YOUR NAME (optional)",key:"name",type:"text",ph:"Anonymous is fine"},{label:"EMAIL (optional)",key:"email",type:"email",ph:"Only if you want credit"},{label:"SOURCE / LINK",key:"source",type:"text",ph:"URL or publication name"}].map(f => (
             <div key={f.key} style={{ marginBottom: 16 }}>
               <label style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.textMuted, display: "block", marginBottom: 6 }}>{f.label}</label>
-              <input type={f.type} value={form[f.key]} onChange={e => set(f.key, e.target.value)} placeholder={f.placeholder} style={{
-                width: "100%", fontFamily: "monospace", fontSize: 12, padding: "9px 12px",
-                background: t.surface, border: `1px solid ${t.border}`, color: t.text,
-                borderRadius: 2, outline: "none",
-              }} />
+              <input type={f.type} value={form[f.key]} onChange={e => set(f.key, e.target.value)} placeholder={f.ph} style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: "9px 12px", background: t.surface, border: `1px solid ${t.border}`, color: t.text, borderRadius: 2, outline: "none" }} />
             </div>
           ))}
-
           <div style={{ marginBottom: 16 }}>
             <label style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.textMuted, display: "block", marginBottom: 6 }}>CATEGORY</label>
-            <select value={form.category} onChange={e => set("category", e.target.value)} style={{
-              width: "100%", fontFamily: "monospace", fontSize: 12, padding: "9px 12px",
-              background: t.surface, border: `1px solid ${t.border}`, color: t.text,
-              borderRadius: 2, outline: "none", cursor: "pointer",
-            }}>
+            <select value={form.category} onChange={e => set("category", e.target.value)} style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: "9px 12px", background: t.surface, border: `1px solid ${t.border}`, color: t.text, borderRadius: 2, outline: "none", cursor: "pointer" }}>
               {CATEGORIES.filter(c => c.id !== "all").map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
           </div>
-
           <div style={{ marginBottom: 20 }}>
             <label style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.textMuted, display: "block", marginBottom: 6 }}>THE SIGNAL *</label>
-            <textarea value={form.tip} onChange={e => set("tip", e.target.value)} placeholder="What did you spot? Be specific — who, what, why it matters." rows={5} style={{
-              width: "100%", fontFamily: "monospace", fontSize: 12, padding: "9px 12px",
-              background: t.surface, border: `1px solid ${t.border}`, color: t.text,
-              borderRadius: 2, outline: "none", resize: "vertical", lineHeight: 1.6,
-            }} />
+            <textarea value={form.tip} onChange={e => set("tip", e.target.value)} placeholder="What did you spot? Be specific — who, what, why it matters." rows={5} style={{ width: "100%", fontFamily: "monospace", fontSize: 12, padding: "9px 12px", background: t.surface, border: `1px solid ${t.border}`, color: t.text, borderRadius: 2, outline: "none", resize: "vertical", lineHeight: 1.6 }} />
           </div>
-
-          <button onClick={() => form.tip.length > 10 && setSubmitted(true)} style={{
-            fontFamily: "monospace", fontSize: 11, letterSpacing: 2, padding: "11px 24px",
-            background: form.tip.length > 10 ? t.accent : "transparent",
-            border: `1px solid ${form.tip.length > 10 ? t.accent : t.border}`,
-            color: form.tip.length > 10 ? (dark ? "#080808" : "#fff") : t.textMuted,
-            cursor: form.tip.length > 10 ? "pointer" : "not-allowed", borderRadius: 2, fontWeight: 700,
-          }}>SUBMIT SIGNAL →</button>
+          <button onClick={() => form.tip.length > 10 && setSubmitted(true)} style={{ fontFamily: "monospace", fontSize: 11, letterSpacing: 2, padding: "11px 24px", background: form.tip.length>10?t.accent:"transparent", border: `1px solid ${form.tip.length>10?t.accent:t.border}`, color: form.tip.length>10?(dark?"#080808":"#fff"):t.textMuted, cursor: form.tip.length>10?"pointer":"not-allowed", borderRadius: 2, fontWeight: 700 }}>SUBMIT SIGNAL →</button>
         </div>
       )}
     </div>
   );
 }
 
-// ─── PAGE: ABOUT ──────────────────────────────────────────────────────────────
-
+// ─── ABOUT PAGE ───────────────────────────────────────────────────────────────
 function AboutPage({ dark }) {
   const t = useTheme(dark);
   const sections = [
-    { title: "What is WOAI?", body: "WOAI (World of AI) is an AI-native intelligence platform that monitors the global AI landscape in real time. We run specialist agents that scan hundreds of sources simultaneously — no editors, no agendas, no hype filtering." },
+    { title: "What is WOAI?", body: "WOAI (World of AI) is an AI-native intelligence platform monitoring the global AI landscape in real time. Specialist agents scan hundreds of sources simultaneously — no editors, no agendas, no hype filtering." },
     { title: "How does it work?", body: "Six specialist AI agents run in parallel, each focused on a specific vertical: model releases, funding, research, tools, geopolitics, and bio+AI. They search the web, extract signals, assess urgency, and surface what actually matters." },
-    { title: "Why no hype?", body: "99% of AI news coverage is either PR-driven cheerleading or panic. We built WOAI because serious builders, investors, and thinkers needed a feed that treats them like adults. Every signal is assessed on impact, novelty, and timing — not clicks." },
-    { title: "Who is this for?", body: "AI founders, investors, researchers, CTOs, and anyone who needs to stay genuinely informed about the AI landscape without spending 3 hours a day reading newsletters." },
-    { title: "This is Beta", body: "WOAI is in private beta. We're sharing with a small group of trusted people first. If you have feedback — what's missing, what's wrong, what you'd pay for — the Submit Tip page is your direct line to us." },
+    { title: "Why no hype?", body: "99% of AI news coverage is PR-driven cheerleading or panic. We built WOAI because serious builders, investors, and thinkers needed a feed that treats them like adults." },
+    { title: "Who is this for?", body: "AI founders, investors, researchers, CTOs, and anyone who needs to stay genuinely informed without spending 3 hours a day reading newsletters." },
+    { title: "This is Beta", body: "WOAI is in private beta. We're sharing with a small trusted group first. If you have feedback — what's missing, what's wrong, what you'd pay for — the Submit Tip page is your direct line to us." },
   ];
-
   return (
     <div style={{ maxWidth: 620 }}>
       <div style={{ padding: "28px 0 20px", borderBottom: `1px solid ${t.border}`, marginBottom: 32 }}>
-        <div style={{ fontFamily: "monospace", fontSize: 11, letterSpacing: 3, color: t.accent, marginBottom: 10 }}>ABOUT WOAI</div>
-        <h1 style={{ fontFamily: "Georgia, serif", fontSize: 32, fontWeight: 400, color: t.text, marginBottom: 10, lineHeight: 1.2 }}>
-          No hype.<br />No agenda.<br />Just signal.
-        </h1>
+        <div style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 3, color: t.accent, marginBottom: 10 }}>ABOUT WOAI</div>
+        <h1 style={{ fontFamily: "Georgia, serif", fontSize: 32, fontWeight: 400, color: t.text, marginBottom: 10, lineHeight: 1.25 }}>No hype.<br />No agenda.<br />Just signal.</h1>
         <p style={{ fontSize: 14, color: t.textMid, lineHeight: 1.7 }}>The Reuters of AI — built by people who actually think about this stuff.</p>
       </div>
-
-      {sections.map((s, i) => (
-        <div key={i} style={{ marginBottom: 28, paddingBottom: 28, borderBottom: i < sections.length - 1 ? `1px solid ${t.border}` : "none" }}>
-          <h2 style={{ fontFamily: "monospace", fontSize: 11, letterSpacing: 2, color: t.accent, marginBottom: 10 }}>{s.title.toUpperCase()}</h2>
+      {sections.map((s,i) => (
+        <div key={i} style={{ marginBottom: 28, paddingBottom: 28, borderBottom: i<sections.length-1?`1px solid ${t.border}`:"none" }}>
+          <h2 style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, color: t.accent, marginBottom: 10 }}>{s.title.toUpperCase()}</h2>
           <p style={{ fontSize: 14, color: t.textMid, lineHeight: 1.8 }}>{s.body}</p>
         </div>
       ))}
-
       <div style={{ background: t.accentDim, border: `1px solid ${t.accent}33`, borderRadius: 3, padding: 20 }}>
         <div style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 3, color: t.accent, marginBottom: 8 }}>BETA STATUS</div>
-        <p style={{ fontSize: 13, color: t.textMid, lineHeight: 1.7 }}>
-          You're one of the first people to see WOAI. Your feedback directly shapes what this becomes. What's missing? What would you pay for? What's broken? We want to know everything.
-        </p>
+        <p style={{ fontSize: 13, color: t.textMid, lineHeight: 1.7 }}>You're one of the first people to see WOAI. Your feedback directly shapes what this becomes.</p>
       </div>
     </div>
   );
 }
 
-// ─── ROOT APP ─────────────────────────────────────────────────────────────────
-
+// ─── ROOT — all feed state lives HERE so it never resets on tab switch ────────
 export default function WOAI() {
   const [page, setPage] = useState("FEED");
   const [dark, setDark] = useState(false);
   const t = useTheme(dark);
 
-  const pages = { FEED: <FeedPage dark={dark} />, LEADERBOARD: <LeaderboardPage dark={dark} />, "SUBMIT TIP": <SubmitPage dark={dark} />, ABOUT: <AboutPage dark={dark} /> };
+  // Feed state lives in root — survives tab switches ✅
+  const [news, setNews] = useState([]);
+  const [agentStatuses, setAgentStatuses] = useState({});
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [running, setRunning] = useState(false);
+
+  const runAgents = useCallback(async () => {
+    setRunning(true); setNews([]); setAgentStatuses({});
+    const allNews = [];
+    for (const agent of AGENTS) {
+      setAgentStatuses(prev => ({ ...prev, [agent.id]: "scanning" }));
+      const prompt = `You are a specialist AI intelligence agent focused on: ${agent.focus}.
+Search the web for the latest news from the past 72 hours in this area.
+Return ONLY a raw JSON array of exactly 3 news items. No markdown.
+Each item: title, summary (2 sentences), category (use exactly: ${agent.id}), urgency (high/medium/low), source, signal (3-6 word insight starting with WATCH/TRACK/FLAG/NOTE).`;
+      try {
+        const raw = await callClaude(prompt, 1500);
+        const parsed = parseJSON(raw, "[");
+        if (parsed && Array.isArray(parsed)) allNews.push(...parsed.map(i => ({...i, category: agent.id})));
+      } catch (_) {}
+      setAgentStatuses(prev => ({ ...prev, [agent.id]: "done" }));
+      setNews([...allNews]); // update incrementally so cards appear as each agent finishes
+    }
+    setLastUpdated(new Date().toLocaleTimeString());
+    setRunning(false);
+  }, []);
+
+  useEffect(() => { runAgents(); }, []);
 
   return (
     <div style={{ background: t.bg, minHeight: "100vh", color: t.text, fontFamily: "system-ui, sans-serif" }}>
       <style>{`
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         @keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
         @keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.25} }
         @keyframes scan   { 0%{transform:translateX(-100%)} 100%{transform:translateX(500%)} }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        input::placeholder { color: ${t.textFaint}; }
-        textarea::placeholder { color: ${t.textFaint}; }
-        input, textarea, select { color-scheme: ${dark ? "dark" : "light"}; }
+        input::placeholder, textarea::placeholder { color: ${t.textFaint}; }
       `}</style>
 
-      {/* Top nav */}
       <nav style={{ borderBottom: `1px solid ${t.border}`, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "space-between", background: t.bg, position: "sticky", top: 0, zIndex: 100 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 32, height: 54 }}>
-          {/* Logo */}
-          <div onClick={() => setPage("FEED")} style={{ cursor: "pointer" }}>
+          <div onClick={() => setPage("FEED")} style={{ cursor: "pointer", display: "flex", alignItems: "baseline", gap: 8 }}>
             <span style={{ fontFamily: "monospace", fontSize: 18, fontWeight: 700, letterSpacing: 5, color: t.accent }}>WOAI</span>
-            <span style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.textMuted, marginLeft: 8 }}>WORLD OF AI</span>
+            <span style={{ fontFamily: "monospace", fontSize: 9, letterSpacing: 2, color: t.textMuted }}>WORLD OF AI</span>
           </div>
-
-          {/* Nav links */}
-          <div style={{ display: "flex", gap: 0 }}>
+          <div style={{ display: "flex" }}>
             {NAV.map(n => (
-              <button key={n} onClick={() => setPage(n)} style={{
-                fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "0 14px", height: 54,
-                background: "transparent", border: "none",
-                borderBottom: page === n ? `2px solid ${t.accent}` : "2px solid transparent",
-                color: page === n ? t.accent : t.textMuted,
-                cursor: "pointer", fontWeight: page === n ? 700 : 400,
-              }}>{n}</button>
+              <button key={n} onClick={() => setPage(n)} style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 2, padding: "0 14px", height: 54, background: "transparent", border: "none", borderBottom: page===n?`2px solid ${t.accent}`:"2px solid transparent", color: page===n?t.accent:t.textMuted, cursor: "pointer", fontWeight: page===n?700:400 }}>{n}</button>
             ))}
           </div>
         </div>
-
-        {/* Right */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-            <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#22c55e", animation: "pulse 2s infinite" }} />
-            <span style={{ fontFamily: "monospace", fontSize: 9, color: "#22c55e", letterSpacing: 2 }}>LIVE</span>
+            <div style={{ width: 5, height: 5, borderRadius: "50%", background: running ? t.accent : "#22c55e", animation: "pulse 2s infinite" }} />
+            <span style={{ fontFamily: "monospace", fontSize: 9, color: running ? t.accent : "#22c55e", letterSpacing: 2 }}>{running ? "SCANNING" : "LIVE"}</span>
           </div>
           <div style={{ width: 1, height: 18, background: t.border }} />
-          <button onClick={() => setDark(d => !d)} style={{
-            fontFamily: "monospace", fontSize: 10, padding: "6px 12px",
-            background: dark ? "#1c1c1c" : "#ededea", border: `1px solid ${t.border}`,
-            color: t.text, cursor: "pointer", borderRadius: 2,
-          }}>{dark ? "☀" : "☾"}</button>
+          <button onClick={() => setDark(d => !d)} style={{ fontFamily: "monospace", fontSize: 11, padding: "6px 12px", background: dark?"#1c1c1c":"#ededea", border: `1px solid ${t.border}`, color: t.text, cursor: "pointer", borderRadius: 2 }}>{dark?"☀":"☾"}</button>
         </div>
       </nav>
 
-      {/* Page content */}
       <main style={{ maxWidth: 1100, margin: "0 auto", padding: "0 28px" }}>
-        {pages[page]}
+        {page === "FEED" && <FeedPage dark={dark} news={news} agentStatuses={agentStatuses} lastUpdated={lastUpdated} running={running} runAgents={runAgents} />}
+        {page === "LEADERBOARD" && <LeaderboardPage dark={dark} />}
+        {page === "SUBMIT TIP" && <SubmitPage dark={dark} />}
+        {page === "ABOUT" && <AboutPage dark={dark} />}
       </main>
 
-      {/* Footer */}
       <footer style={{ borderTop: `1px solid ${t.border}`, margin: "40px 28px 0", padding: "20px 0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontFamily: "monospace", fontSize: 10, letterSpacing: 3, color: t.accent }}>WOAI — WORLD OF AI</span>
-        <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted, letterSpacing: 1 }}>PRIVATE BETA — NOT FOR REDISTRIBUTION</span>
+        <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textMuted }}>PRIVATE BETA — NOT FOR REDISTRIBUTION</span>
         <span style={{ fontFamily: "monospace", fontSize: 9, color: t.textFaint }}>{new Date().getFullYear()}</span>
       </footer>
     </div>
