@@ -67,7 +67,7 @@ function useTheme(dark) {
 // ─── CLAUDE API CALL ──────────────────────────────────────────────────────────
 
 async function callClaude(prompt, maxTokens = 2000) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("/api/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -79,16 +79,8 @@ async function callClaude(prompt, maxTokens = 2000) {
   });
   const data = await res.json();
   let text = "";
-  for (const b of data.content) { if (b.type === "text") text += b.text; }
+  for (const b of (data.content || [])) { if (b.type === "text") text += b.text; }
   return text;
-}
-
-function parseJSON(raw, bracket = "[") {
-  const cleaned = raw.replace(/```json|```/g, "").trim();
-  const open = bracket === "[" ? cleaned.indexOf("[") : cleaned.indexOf("{");
-  const close = bracket === "[" ? cleaned.lastIndexOf("]") : cleaned.lastIndexOf("}");
-  if (open === -1 || close === -1) return null;
-  try { return JSON.parse(cleaned.substring(open, close + 1)); } catch { return null; }
 }
 
 // ─── SMALL COMPONENTS ─────────────────────────────────────────────────────────
