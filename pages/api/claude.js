@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
     // Step 1: Tavily searches web (2-3 seconds)
     let articles = "";
-    if (tavilyKey && agentFocus) {
+    if (tavilyKey && agentFocus && agentId !== "leaderboard") {
       try {
         const tavilyRes = await fetch("https://api.tavily.com/search", {
           method: "POST",
