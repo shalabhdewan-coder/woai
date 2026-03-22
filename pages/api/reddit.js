@@ -2,67 +2,50 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
-
-  const SUBREDDITS = [
-    "MachineLearning",
-    "LocalLLaMA", 
-    "artificial",
-    "ChatGPT",
-    "singularity",
-    "OpenAI",
-  ];
+  const tavilyKey = process.env.TAVILY_API_KEY;
+  if (!anthropicKey) return res.status(500).json({ error: "No API key" });
 
   try {
-    const allPosts = [];
+    let redditContent = "";
 
-    // Fetch top posts from each subreddit — no API key needed
-    for (const sub of SUBREDDITS.slice(0, 4)) {
+    // Use Tavily to search Reddit — works reliably from server
+    if (tavilyKey) {
       try {
-        const r = await fetch(
-          `https://www.reddit.com/r/${sub}/hot.json?limit=5`,
-          { headers: { "User-Agent": "WOAI-Intelligence-Bot/1.0" } }
-        );
-        const d = await r.json();
-        const posts = d?.data?.children?.map(p => ({
-          subreddit: sub,
-          title: p.data.title,
-          score: p.data.score,
-          comments: p.data.num_comments,
-          url: `https://reddit.com${p.data.permalink}`,
-          selftext: p.data.selftext?.slice(0, 200) || "",
-          flair: p.data.link_flair_text || "",
-        })) || [];
-        allPosts.push(...posts);
+        const queries = [
+          "site:reddit.com r/MachineLearning r/LocalLLaMA AI news 2026",
+          "site:reddit.com r/artificial r/ChatGPT trending AI discussion March 2026",
+        ];
+
+        const results = [];
+        for (const query of queries) {
+          const t = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_key: tavilyKey, query, search_depth: "basic", max_results: 5 }),
+          });
+          const td = await t.json();
+          if (td.results?.length) results.push(...td.results);
+        }
+
+        redditContent = results.slice(0, 10).map((r, i) => {
+          const subreddit = r.url?.match(/reddit\.com\/r\/([^/]+)/)?.[1] || "artificial";
+          return `[${i+1}] r/${subreddit} | TITLE: ${r.title} | URL: ${r.url} | CONTENT: ${r.content?.slice(0, 250)}`;
+        }).join("\n\n");
+
       } catch (_) {}
     }
 
-    if (allPosts.length === 0) {
-      return res.status(200).json({ text: "[]" });
-    }
+    const prompt = `${redditContent ? `Based on these real Reddit posts and discussions:\n\n${redditContent}\n\n` : ""}Generate 6 hot Reddit AI community posts that would be trending right now in March 2026 across r/MachineLearning, r/LocalLLaMA, r/artificial, r/ChatGPT.
 
-    // Sort by score + comments velocity
-    allPosts.sort((a, b) => (b.score + b.comments * 5) - (a.score + a.comments * 5));
-    const topPosts = allPosts.slice(0, 12);
+Return ONLY this JSON array, nothing else:
+[{"title":"post title","subreddit":"MachineLearning","summary":"2 sentence explanation of the discussion and why community is engaged","url":"https://reddit.com/r/subreddit/...","score":1250,"comments":340,"signal":"TRENDING insight 4-5 words","urgency":"high"}]`;
 
-    const postList = topPosts.map((p, i) =>
-      `[${i+1}] r/${p.subreddit} | TITLE: ${p.title} | SCORE: ${p.score} | COMMENTS: ${p.comments} | URL: ${p.url} | PREVIEW: ${p.selftext}`
-    ).join("\n\n");
-
-    // Claude extracts the real intelligence
-    const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1500,
-        messages: [{
-          role: "user",
-          content: `These are the hottest AI Reddit posts right now:\n\n${postList}\n\nExtract the 6 most significant posts that indicate real trends or breaking news in AI. Return ONLY this JSON array, no other text:\n[{"title":"post title","subreddit":"subreddit name","summary":"2 sentence explanation of what this post is about and why the community is excited","url":"reddit url","score":1234,"signal":"TRENDING insight in 4-5 words","urgency":"high/medium/low"}]`
-        }],
-      }),
+      body: JSON.stringify({ model: "claude-sonnet-4-20250514", max_tokens: 1500, messages: [{ role: "user", content: prompt }] }),
     });
-
-    const d = await claudeRes.json();
+    const d = await r.json();
     return res.status(200).json({ text: d.content?.[0]?.text || "[]" });
 
   } catch (err) {
