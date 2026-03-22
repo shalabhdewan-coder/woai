@@ -8,9 +8,35 @@ export default async function handler(req, res) {
   try {
     const { agentId, agentFocus } = req.body;
 
-    // Step 1: Tavily searches web (2-3 seconds)
+    // ── LEADERBOARD: just ask Claude directly, no Tavily needed ──
+    if (agentId === "leaderboard") {
+      const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": anthropicKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 2000,
+          messages: [{
+            role: "user",
+            content: `List the best AI tools right now for: Coding, Writing, Image Gen, Research, Video, Voice, Data Analysis, Agents.
+For each give top 3 tools with a one-line reason why.
+Return ONLY this raw JSON, nothing else, no markdown:
+{"Coding":[{"name":"X","reason":"..."},{"name":"Y","reason":"..."},{"name":"Z","reason":"..."}],"Writing":[...],"Image Gen":[...],"Research":[...],"Video":[...],"Voice":[...],"Data Analysis":[...],"Agents":[...]}`,
+          }],
+        }),
+      });
+      const data = await claudeRes.json();
+      const text = data.content?.[0]?.text || "{}";
+      return res.status(200).json({ text });
+    }
+
+    // ── NEWS AGENTS: Tavily search + Claude analysis ──
     let articles = "";
-    if (tavilyKey && agentFocus && agentId !== "leaderboard") {
+    if (tavilyKey && agentFocus) {
       try {
         const tavilyRes = await fetch("https://api.tavily.com/search", {
           method: "POST",
@@ -20,8 +46,6 @@ export default async function handler(req, res) {
             query: `${agentFocus} news March 2026`,
             search_depth: "basic",
             max_results: 6,
-            include_answer: false,
-            include_raw_content: false,
           }),
         });
         const tavilyData = await tavilyRes.json();
@@ -33,10 +57,9 @@ export default async function handler(req, res) {
       } catch (_) {}
     }
 
-    // Step 2: Claude extracts signals (3-5 seconds)
     const prompt = articles
-      ? `You are an AI news analyst. Based on these real articles:\n\n${articles}\n\nExtract exactly 3 news signals. Return ONLY this JSON array, no other text:\n[{"title":"headline here","summary":"one sentence summary","category":"${agentId}","urgency":"high","source":"publication name","signal":"WATCH key insight"}]`
-      : `You are an AI news analyst. Generate 3 recent AI news items about: ${agentFocus}. Return ONLY this JSON array, no other text:\n[{"title":"headline here","summary":"one sentence summary","category":"${agentId}","urgency":"high","source":"publication name","signal":"WATCH key insight"}]`;
+      ? `You are an AI news analyst. Based on these real articles:\n\n${articles}\n\nExtract exactly 3 news signals. Return ONLY this JSON array, nothing else:\n[{"title":"...","summary":"one sentence","category":"${agentId}","urgency":"high","source":"publication name","signal":"WATCH insight here"}]`
+      : `You are an AI news analyst. List 3 recent AI news items about: ${agentFocus}. Return ONLY this JSON array:\n[{"title":"...","summary":"one sentence","category":"${agentId}","urgency":"high","source":"publication name","signal":"WATCH insight here"}]`;
 
     const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
